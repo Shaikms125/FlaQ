@@ -15,6 +15,7 @@ dist-ssr
 *.local
 convex/_generated
 build
+.agents
 
 # Editor directories and files
 .vscode/*
