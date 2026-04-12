@@ -14,6 +14,8 @@ type ThemeProviderProps = {
 type ThemeProviderState = {
   theme: Theme
   setTheme: (theme: Theme) => void
+  /** Effective light/dark after resolving `"system"`. */
+  resolvedTheme: ResolvedTheme
 }
 
 const COLOR_SCHEME_QUERY = "(prefers-color-scheme: dark)"
@@ -32,11 +34,32 @@ function isTheme(value: string | null): value is Theme {
 }
 
 function getSystemTheme(): ResolvedTheme {
+  if (typeof window === "undefined") {
+    return "light"
+  }
+
   if (window.matchMedia(COLOR_SCHEME_QUERY).matches) {
     return "dark"
   }
 
   return "light"
+}
+
+function resolveStoredTheme(storageKey: string, defaultTheme: Theme): Theme {
+  if (typeof localStorage === "undefined") {
+    return defaultTheme
+  }
+
+  const storedTheme = localStorage.getItem(storageKey)
+  if (isTheme(storedTheme)) {
+    return storedTheme
+  }
+
+  return defaultTheme
+}
+
+function resolvedThemeFromTheme(theme: Theme): ResolvedTheme {
+  return theme === "system" ? getSystemTheme() : theme
 }
 
 function disableTransitionsTemporarily() {
@@ -84,14 +107,13 @@ export function ThemeProvider({
   disableTransitionOnChange = true,
   ...props
 }: ThemeProviderProps) {
-  const [theme, setThemeState] = React.useState<Theme>(() => {
-    const storedTheme = localStorage.getItem(storageKey)
-    if (isTheme(storedTheme)) {
-      return storedTheme
-    }
+  const [theme, setThemeState] = React.useState<Theme>(() =>
+    resolveStoredTheme(storageKey, defaultTheme)
+  )
 
-    return defaultTheme
-  })
+  const [resolvedTheme, setResolvedTheme] = React.useState<ResolvedTheme>(() =>
+    resolvedThemeFromTheme(resolveStoredTheme(storageKey, defaultTheme))
+  )
 
   const setTheme = React.useCallback(
     (nextTheme: Theme) => {
@@ -104,14 +126,16 @@ export function ThemeProvider({
   const applyTheme = React.useCallback(
     (nextTheme: Theme) => {
       const root = document.documentElement
-      const resolvedTheme =
+      const nextResolved =
         nextTheme === "system" ? getSystemTheme() : nextTheme
       const restoreTransitions = disableTransitionOnChange
         ? disableTransitionsTemporarily()
         : null
 
+      setResolvedTheme(nextResolved)
+
       root.classList.remove("light", "dark")
-      root.classList.add(resolvedTheme)
+      root.classList.add(nextResolved)
 
       if (restoreTransitions) {
         restoreTransitions()
@@ -208,8 +232,9 @@ export function ThemeProvider({
     () => ({
       theme,
       setTheme,
+      resolvedTheme,
     }),
-    [theme, setTheme]
+    [theme, setTheme, resolvedTheme]
   )
 
   return (

@@ -9,17 +9,32 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { useTheme } from "@/components/ThemeProvider"
+import { cn } from "@/lib/utils"
 
 export default function ThemeSwitcher() {
-  const { setTheme } = useTheme()
+  const { setTheme, resolvedTheme } = useTheme()
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
         render={
-          <Button variant="outline" size="icon-sm" className="rounded-xl">
-            <IconSun className="rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
-            <IconMoon className="absolute rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
+          <Button variant="outline" size="icon-sm" className="size-8 rounded-md">
+            <IconSun
+              className={cn(
+                "transition-all",
+                resolvedTheme === "dark"
+                  ? "-rotate-90 scale-0"
+                  : "rotate-0 scale-100"
+              )}
+            />
+            <IconMoon
+              className={cn(
+                "absolute transition-all",
+                resolvedTheme === "dark"
+                  ? "rotate-0 scale-100"
+                  : "rotate-90 scale-0"
+              )}
+            />
             <span className="sr-only">Toggle theme</span>
           </Button>
         }
