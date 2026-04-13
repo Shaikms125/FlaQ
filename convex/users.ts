@@ -15,13 +15,20 @@ export const upsertFromClerk = internalMutation({
   args: { data: v.any() as Validator<UserJSON> }, // no runtime validation, trust Clerk
   async handler(ctx, { data }) {
     const userAttributes = {
-      name: `${data.first_name} ${data.last_name}`,
+      name: `${data.first_name ?? ""} ${data.last_name ?? ""}`.trim() || "Unknown",
       externalId: data.id,
+      email: data.email_addresses?.[0]?.email_address ?? "",
+      imageUrl: data.image_url ?? undefined,
     };
 
     const user = await userByExternalId(ctx, data.id);
     if (user === null) {
-      await ctx.db.insert("users", userAttributes);
+      await ctx.db.insert("users", {
+        ...userAttributes,
+        accountType: "personal",  // default — everyone starts as personal
+        isActive: true,
+        createdAt: Date.now(),
+      });
     } else {
       await ctx.db.patch(user._id, userAttributes);
     }

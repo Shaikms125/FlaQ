@@ -50,7 +50,12 @@ export function QuizGeneratorModal() {
     if (!quizData) return;
     setLoading(true);
     try {
-      await saveQuiz({ prompt, questions: quizData });
+      // Derive a title from the prompt (first 50 chars)
+      const title = prompt.length > 50
+        ? prompt.substring(0, 50).trim() + "..."
+        : prompt.trim();
+
+      await saveQuiz({ prompt, title, questions: quizData });
       setOpen(false); // Close dialog on success
       setPrompt("");
       setQuizData(null);
