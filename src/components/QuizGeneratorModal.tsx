@@ -95,7 +95,7 @@ export function QuizGeneratorModal() {
           render={
             <SidebarMenuButton
               tooltip="Generate Quiz"
-              className="border border-sidebar-border bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary/90 hover:text-sidebar-primary-foreground data-active:bg-sidebar-primary data-active:text-sidebar-primary-foreground"
+              className="border border-sidebar-border bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground data-active:bg-primary data-active:text-primary-foreground"
             />
           }
         >

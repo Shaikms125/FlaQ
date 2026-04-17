@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button"
 
-import { Show, SignInButton, SignUpButton, UserButton } from '@clerk/react'
+import { Show, SignInButton, SignUpButton } from '@clerk/react'
 
 export default function Home() {
   return (
@@ -9,9 +9,6 @@ export default function Home() {
         <Show when="signed-out">
           <SignInButton />
           <SignUpButton />
-        </Show>
-        <Show when="signed-in">
-          <UserButton />
         </Show>
       </header>
       <div className="flex max-w-md min-w-0 flex-col gap-4 text-sm leading-loose">

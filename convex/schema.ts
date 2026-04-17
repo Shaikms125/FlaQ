@@ -65,13 +65,15 @@ export default defineSchema({
     allowUnlimitedAttempts: v.boolean(),
     maxAttempts: v.optional(v.number()),
     isPublished: v.boolean(),
+    isPublic: v.boolean(),
     accessCode: v.string(),
     accessLink: v.string(),
     createdAt: v.number(),
   })
     .index("byUserId", ["userId"])
     .index("byClassId", ["classId"])
-    .index("byAccessCode", ["accessCode"]),
+    .index("byAccessCode", ["accessCode"])
+    .index("byAccessLink", ["accessLink"]),
 
   // ─── QUESTIONS ────────────────────────────────────────────────
   // Options embedded as array — no separate options table needed

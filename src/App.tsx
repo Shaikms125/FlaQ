@@ -4,8 +4,11 @@ import SignInPage from "@/pages/SignIn"
 import SignUpPage from "@/pages/SignUp"
 import ProtectedLayout from "./layouts/ProtectedLayout"
 import MainLayout from "./layouts/MainLayout"
-import About from "./pages/About"
 import Home from "./pages/Home"
+import MyQuizzes from "./pages/MyQuizzes"
+import QuizEditor from "./pages/QuizEditor"
+import QuizScores from "./pages/QuizScores"
+import PublicQuizTaker from "./pages/PublicQuizTaker"
 
 const router = createBrowserRouter([
   {
@@ -20,6 +23,11 @@ const router = createBrowserRouter([
         path: "signup/*",
         element: <SignUpPage />,
       },
+      // Public quiz route — no authentication required
+      {
+        path: "quiz/:accessCode",
+        element: <PublicQuizTaker />,
+      },
       {
         element: <ProtectedLayout />,
         children: [
@@ -32,8 +40,16 @@ const router = createBrowserRouter([
                 element: <Home />,
               },
               {
-                path: "about",
-                element: <About />,
+                path: "my-quizzes",
+                element: <MyQuizzes />,
+              },
+              {
+                path: "my-quizzes/:quizId/edit",
+                element: <QuizEditor />,
+              },
+              {
+                path: "my-quizzes/:quizId/scores",
+                element: <QuizScores />,
               },
             ],
           },

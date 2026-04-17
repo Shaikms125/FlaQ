@@ -121,6 +121,7 @@ export const saveQuiz = mutation({
       title: args.title,
       description: args.description,
       isPublished: false,
+      isPublic: false,
       allowUnlimitedAttempts: true,
       accessCode,
       accessLink: `/quiz/${accessCode}`,
@@ -167,11 +168,34 @@ export const getQuizzes = query({
       return { page: [], isDone: true, continueCursor: "" };
     }
 
-    return await ctx.db
+    const quizzes = await ctx.db
       .query("quizzes")
       .withIndex("byUserId", (q) => q.eq("userId", user._id))
       .order("desc")
       .paginate(args.paginationOpts);
+
+    // Enrich with counts
+    const page = await Promise.all(
+      quizzes.page.map(async (quiz) => {
+        const questions = await ctx.db
+          .query("questions")
+          .withIndex("byQuizId", (q) => q.eq("quizId", quiz._id))
+          .collect();
+
+        const attempts = await ctx.db
+          .query("quiz_attempts")
+          .withIndex("byQuizId", (q) => q.eq("quizId", quiz._id))
+          .collect();
+
+        return {
+          ...quiz,
+          questionCount: questions.length,
+          attemptCount: attempts.length,
+        };
+      })
+    );
+
+    return { ...quizzes, page };
   }
 });
 
@@ -206,6 +230,7 @@ export const updateQuiz = mutation({
     title: v.optional(v.string()),
     description: v.optional(v.string()),
     isPublished: v.optional(v.boolean()),
+    isPublic: v.optional(v.boolean()),
     timeLimitSeconds: v.optional(v.number()),
     availableFrom: v.optional(v.number()),
     availableTo: v.optional(v.number()),
@@ -293,4 +318,204 @@ export const deleteQuiz = mutation({
     // Finally delete the quiz itself
     await ctx.db.delete(args.quizId);
   }
+});
+
+// ─── GET PUBLIC QUIZ BY ACCESS CODE ─────────────────────────────
+// No auth required — strips isCorrect from options to prevent cheating
+
+export const getPublicQuizByAccessCode = query({
+  args: { accessCode: v.string() },
+  handler: async (ctx, args) => {
+    const quiz = await ctx.db
+      .query("quizzes")
+      .withIndex("byAccessCode", (q) => q.eq("accessCode", args.accessCode))
+      .unique();
+
+    if (!quiz || !quiz.isPublic) return null;
+
+    const questions = await ctx.db
+      .query("questions")
+      .withIndex("byQuizId", (q) => q.eq("quizId", quiz._id))
+      .collect();
+
+    questions.sort((a, b) => a.orderIndex - b.orderIndex);
+
+    // Strip isCorrect from options — quiz takers should not see correct answers
+    const safeQuestions = questions.map((q) => ({
+      _id: q._id,
+      quizId: q.quizId,
+      question: q.question,
+      orderIndex: q.orderIndex,
+      options: q.options.map((opt) => ({ text: opt.text })),
+    }));
+
+    return {
+      _id: quiz._id,
+      title: quiz.title,
+      description: quiz.description,
+      timeLimitSeconds: quiz.timeLimitSeconds,
+      questionCount: questions.length,
+      questions: safeQuestions,
+    };
+  },
+});
+
+// ─── UPDATE QUESTION ────────────────────────────────────────────
+
+export const updateQuestion = mutation({
+  args: {
+    questionId: v.id("questions"),
+    question: v.optional(v.string()),
+    explanation: v.optional(v.string()),
+    answer: v.optional(v.string()),
+    options: v.optional(
+      v.array(
+        v.object({
+          text: v.string(),
+          isCorrect: v.boolean(),
+        })
+      )
+    ),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Unauthenticated");
+
+    const user = await ctx.db
+      .query("users")
+      .withIndex("byExternalId", (q) => q.eq("externalId", identity.subject))
+      .unique();
+    if (!user) throw new Error("User not found");
+
+    const existingQuestion = await ctx.db.get(args.questionId);
+    if (!existingQuestion) throw new Error("Question not found");
+
+    // Verify ownership via quiz
+    const quiz = await ctx.db.get(existingQuestion.quizId);
+    if (!quiz || quiz.userId !== user._id) throw new Error("Unauthorized");
+
+    const { questionId, ...updates } = args;
+    const cleanUpdates = Object.fromEntries(
+      Object.entries(updates).filter(([, v]) => v !== undefined)
+    );
+
+    if (Object.keys(cleanUpdates).length > 0) {
+      await ctx.db.patch(questionId, cleanUpdates);
+    }
+  },
+});
+
+// ─── DELETE QUESTION ────────────────────────────────────────────
+
+export const deleteQuestion = mutation({
+  args: { questionId: v.id("questions") },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Unauthenticated");
+
+    const user = await ctx.db
+      .query("users")
+      .withIndex("byExternalId", (q) => q.eq("externalId", identity.subject))
+      .unique();
+    if (!user) throw new Error("User not found");
+
+    const question = await ctx.db.get(args.questionId);
+    if (!question) throw new Error("Question not found");
+
+    const quiz = await ctx.db.get(question.quizId);
+    if (!quiz || quiz.userId !== user._id) throw new Error("Unauthorized");
+
+    await ctx.db.delete(args.questionId);
+  },
+});
+
+// ─── ADD QUESTION ───────────────────────────────────────────────
+
+export const addQuestion = mutation({
+  args: {
+    quizId: v.id("quizzes"),
+    question: v.string(),
+    explanation: v.string(),
+    answer: v.string(),
+    options: v.array(
+      v.object({
+        text: v.string(),
+        isCorrect: v.boolean(),
+      })
+    ),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Unauthenticated");
+
+    const user = await ctx.db
+      .query("users")
+      .withIndex("byExternalId", (q) => q.eq("externalId", identity.subject))
+      .unique();
+    if (!user) throw new Error("User not found");
+
+    const quiz = await ctx.db.get(args.quizId);
+    if (!quiz || quiz.userId !== user._id) throw new Error("Unauthorized");
+
+    // Get the next orderIndex
+    const existingQuestions = await ctx.db
+      .query("questions")
+      .withIndex("byQuizId", (q) => q.eq("quizId", args.quizId))
+      .collect();
+
+    const maxOrder = existingQuestions.length > 0
+      ? Math.max(...existingQuestions.map((q) => q.orderIndex))
+      : -1;
+
+    const questionId = await ctx.db.insert("questions", {
+      quizId: args.quizId,
+      question: args.question,
+      explanation: args.explanation,
+      answer: args.answer,
+      orderIndex: maxOrder + 1,
+      options: args.options,
+    });
+
+    return questionId;
+  },
+});
+
+// ─── GET QUIZ ATTEMPTS WITH USER DETAILS (creator view) ─────────
+
+export const getQuizAttemptsWithUsers = query({
+  args: { quizId: v.id("quizzes") },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) return [];
+
+    const user = await ctx.db
+      .query("users")
+      .withIndex("byExternalId", (q) => q.eq("externalId", identity.subject))
+      .unique();
+    if (!user) return [];
+
+    // Verify the user owns this quiz
+    const quiz = await ctx.db.get(args.quizId);
+    if (!quiz || quiz.userId !== user._id) return [];
+
+    const attempts = await ctx.db
+      .query("quiz_attempts")
+      .withIndex("byQuizId", (q) => q.eq("quizId", args.quizId))
+      .order("desc")
+      .collect();
+
+    // Enrich with user details
+    const enriched = await Promise.all(
+      attempts.map(async (attempt) => {
+        const student = await ctx.db.get(attempt.studentId);
+        return {
+          ...attempt,
+          studentName: student?.name ?? "Unknown",
+          studentEmail: student?.email ?? "",
+        };
+      })
+    );
+
+    return enriched;
+  },
 });

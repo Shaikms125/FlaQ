@@ -12,7 +12,6 @@ export const submitAttempt = mutation({
       v.object({
         questionId: v.id("questions"),
         selectedOptionText: v.string(),
-        isCorrect: v.boolean(),
       })
     ),
   },
@@ -44,9 +43,27 @@ export const submitAttempt = mutation({
       }
     }
 
-    // Calculate score
-    const correctCount = args.answers.filter((a) => a.isCorrect).length;
-    const totalQuestions = args.answers.length;
+    // Fetch all questions for this quiz to verify answers
+    const questions = await ctx.db
+      .query("questions")
+      .withIndex("byQuizId", (q) => q.eq("quizId", args.quizId))
+      .collect();
+
+    const questionMap = new Map(questions.map((q) => [q._id.toString(), q]));
+
+    // Calculate score and enrich answers with isCorrect
+    let correctCount = 0;
+    const enrichedAnswers = args.answers.map((ans) => {
+      const question = questionMap.get(ans.questionId.toString());
+      const isCorrect = question ? question.answer === ans.selectedOptionText : false;
+      if (isCorrect) correctCount++;
+      return {
+        ...ans,
+        isCorrect,
+      };
+    });
+
+    const totalQuestions = questions.length;
     const percentage = totalQuestions > 0
       ? Math.round((correctCount / totalQuestions) * 100)
       : 0;
@@ -59,10 +76,15 @@ export const submitAttempt = mutation({
       percentage,
       startedAt: Date.now(),
       submittedAt: Date.now(),
-      answers: args.answers,
+      answers: enrichedAnswers,
     });
 
-    return attemptId;
+    return {
+      attemptId,
+      score: correctCount,
+      total: totalQuestions,
+      percentage,
+    };
   },
 });
 
