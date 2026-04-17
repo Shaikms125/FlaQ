@@ -1,6 +1,7 @@
 import { useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
+import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -21,6 +22,8 @@ interface QuizSettingsPanelProps {
   timeLimitSeconds: number | undefined;
   allowUnlimitedAttempts: boolean;
   maxAttempts: number | undefined;
+  availableFrom: number | undefined;
+  availableTo: number | undefined;
 }
 
 export function QuizSettingsPanel({
@@ -29,6 +32,8 @@ export function QuizSettingsPanel({
   timeLimitSeconds,
   allowUnlimitedAttempts,
   maxAttempts,
+  availableFrom,
+  availableTo,
 }: QuizSettingsPanelProps) {
   const [publicState, setPublicState] = useState(isPublic);
   const [hasTimeLimit, setHasTimeLimit] = useState(!!timeLimitSeconds);
@@ -37,6 +42,12 @@ export function QuizSettingsPanel({
   );
   const [unlimitedAttempts, setUnlimitedAttempts] = useState(allowUnlimitedAttempts);
   const [maxAttemptsValue, setMaxAttemptsValue] = useState(maxAttempts ?? 3);
+  const [availableFromValue, setAvailableFromValue] = useState(
+    availableFrom ? new Date(availableFrom).toISOString().slice(0, 16) : ""
+  );
+  const [availableToValue, setAvailableToValue] = useState(
+    availableTo ? new Date(availableTo).toISOString().slice(0, 16) : ""
+  );
 
   const updateQuiz = useMutation(api.quiz.updateQuiz);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -50,7 +61,7 @@ export function QuizSettingsPanel({
         try {
           await updateQuiz({ quizId, ...updates } as Parameters<typeof updateQuiz>[0]);
         } catch (e) {
-          console.error("Failed to save settings:", e);
+          toast.error("Failed to save settings: " + (e as Error).message);
         }
       }, 800);
     },
@@ -95,6 +106,16 @@ export function QuizSettingsPanel({
     scheduleAutoSave({ maxAttempts: val });
   };
 
+  const handleAvailableFromChange = (value: string) => {
+    setAvailableFromValue(value);
+    scheduleAutoSave({ availableFrom: value ? new Date(value).getTime() : undefined });
+  };
+
+  const handleAvailableToChange = (value: string) => {
+    setAvailableToValue(value);
+    scheduleAutoSave({ availableTo: value ? new Date(value).getTime() : undefined });
+  };
+
   return (
     <div className="flex flex-col gap-4">
       {/* Visibility */}
@@ -131,6 +152,42 @@ export function QuizSettingsPanel({
               />
             </div>
           </div>
+
+          {publicState && (
+            <div className="mt-6 flex flex-col gap-3 rounded-lg border bg-muted/30 p-4">
+              <Label className="flex items-center gap-1.5 font-medium">
+                <IconClock className="size-4 text-muted-foreground" />
+                Availability Window (optional)
+              </Label>
+              <p className="text-xs text-muted-foreground">
+                Set when the quiz becomes available and when it expires. Leave blank for always available.
+              </p>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="settings-available-from" className="text-xs text-muted-foreground">
+                    Available From
+                  </Label>
+                  <Input
+                    id="settings-available-from"
+                    type="datetime-local"
+                    value={availableFromValue}
+                    onChange={(e) => handleAvailableFromChange(e.target.value)}
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="settings-available-to" className="text-xs text-muted-foreground">
+                    Available Until
+                  </Label>
+                  <Input
+                    id="settings-available-to"
+                    type="datetime-local"
+                    value={availableToValue}
+                    onChange={(e) => handleAvailableToChange(e.target.value)}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 

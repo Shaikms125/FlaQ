@@ -2,10 +2,14 @@ import { action, mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { paginationOptsValidator } from "convex/server";
 
-// ─── AI GENERATION (unchanged) ──────────────────────────────────
+// ─── AI GENERATION ──────────────────────────────────────────────
 
 export const generateQuiz = action({
-  args: { prompt: v.string() },
+  args: {
+    prompt: v.string(),
+    numOptions: v.optional(v.number()),
+    numQuestions: v.optional(v.number()),
+  },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) {
@@ -16,6 +20,9 @@ export const generateQuiz = action({
     if (!apiKey) {
       throw new Error("Missing OpenRouter API Key");
     }
+
+    const optionCount = args.numOptions ?? 4;
+    const questionCount = args.numQuestions ?? 5;
 
     const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
@@ -28,12 +35,15 @@ export const generateQuiz = action({
         messages: [
           {
             role: "system",
-            content: `You are an expert quiz generator. Generate a multiple-choice quiz based on the user's prompt. 
-Respond ONLY with a valid JSON array of question objects. Do not include any markdown formatting like \`\`\`json.
-Each object must have exactly these keys:
+            content: `You are an expert quiz generator. Generate a multiple-choice quiz based on the user's prompt.
+Respond ONLY with a valid JSON object (no markdown fencing). The object must have:
+- "title": string (a short, descriptive title for the quiz)
+- "questions": array of exactly ${questionCount} question objects
+
+Each question object must have exactly these keys:
 - "question": string (the question text)
-- "options": array of exactly 4 strings (the possible answers)
-- "answer": string (the correct answer, must exactly match one of the options)
+- "options": array of exactly ${optionCount} strings (the possible answers)
+- "answerIndex": number (the 0-based index of the correct option in the options array)
 - "explanation": string (a brief explanation of why the answer is correct)`
           },
           {
@@ -49,7 +59,16 @@ Each object must have exactly these keys:
     }
 
     const data = await response.json();
-    let questions;
+    let result: {
+      title: string;
+      questions: {
+        question: string;
+        options: string[];
+        answerIndex: number;
+        explanation: string;
+      }[];
+    };
+
     try {
       let content = data.choices[0].message.content.trim();
       // Remove any markdown fencing if present
@@ -60,23 +79,36 @@ Each object must have exactly these keys:
       }
       
       const parsed = JSON.parse(content);
-      if (Array.isArray(parsed)) {
-        questions = parsed;
-      } else if (parsed.questions && Array.isArray(parsed.questions)) {
-        questions = parsed.questions;
+      
+      // Handle both formats: { title, questions } or just an array
+      if (parsed.title && Array.isArray(parsed.questions)) {
+        result = parsed;
+      } else if (Array.isArray(parsed)) {
+        result = {
+          title: "Generated Quiz",
+          questions: parsed,
+        };
       } else {
-        throw new Error("Invalid format. Ensure it's an array.");
+        throw new Error("Invalid format. Expected { title, questions } or an array.");
+      }
+
+      // Validate and normalize answerIndex for each question
+      for (const q of result.questions) {
+        if (typeof q.answerIndex !== "number" || q.answerIndex < 0 || q.answerIndex >= q.options.length) {
+          // Fallback: try to find by matching old "answer" field
+          if ("answer" in q && typeof (q as any).answer === "string") {
+            const idx = q.options.indexOf((q as any).answer);
+            q.answerIndex = idx >= 0 ? idx : 0;
+          } else {
+            q.answerIndex = 0;
+          }
+        }
       }
     } catch (e) {
       throw new Error("Failed to parse quiz response: " + (e as Error).message);
     }
     
-    return questions as {
-      question: string;
-      options: string[];
-      answer: string;
-      explanation: string;
-    }[];
+    return result;
   }
 });
 
@@ -85,14 +117,19 @@ Each object must have exactly these keys:
 
 export const saveQuiz = mutation({
   args: {
-    prompt: v.string(),
+    prompt: v.optional(v.string()),
     title: v.string(),
     description: v.optional(v.string()),
+    isPublic: v.optional(v.boolean()),
+    timeLimitSeconds: v.optional(v.number()),
+    allowUnlimitedAttempts: v.optional(v.boolean()),
+    availableFrom: v.optional(v.number()),
+    availableTo: v.optional(v.number()),
     questions: v.array(
       v.object({
         question: v.string(),
         options: v.array(v.string()),
-        answer: v.string(),
+        answerIndex: v.number(),
         explanation: v.optional(v.string()),
       })
     ),
@@ -121,10 +158,12 @@ export const saveQuiz = mutation({
       title: args.title,
       description: args.description,
       isPublished: false,
-      isPublic: false,
-      allowUnlimitedAttempts: true,
+      isPublic: args.isPublic ?? false,
+      allowUnlimitedAttempts: args.allowUnlimitedAttempts ?? true,
+      timeLimitSeconds: args.timeLimitSeconds,
+      availableFrom: args.availableFrom,
+      availableTo: args.availableTo,
       accessCode,
-      accessLink: `/quiz/${accessCode}`,
       createdAt: Date.now(),
     });
 
@@ -136,16 +175,16 @@ export const saveQuiz = mutation({
         quizId,
         question: q.question,
         explanation: q.explanation ?? "",
-        answer: q.answer,
+        answer: q.answerIndex,
         orderIndex: i,
-        options: q.options.map((text) => ({
+        options: q.options.map((text, optIdx) => ({
           text,
-          isCorrect: text === q.answer,
+          isCorrect: optIdx === q.answerIndex,
         })),
       });
     }
 
-    return quizId;
+    return { quizId, accessCode };
   }
 });
 
@@ -333,6 +372,39 @@ export const getPublicQuizByAccessCode = query({
 
     if (!quiz || !quiz.isPublic) return null;
 
+    // Check availability window
+    const now = Date.now();
+    if (quiz.availableFrom && now < quiz.availableFrom) {
+      return {
+        _id: quiz._id,
+        title: quiz.title,
+        description: quiz.description,
+        status: "not-yet" as const,
+        availableFrom: quiz.availableFrom,
+        availableTo: quiz.availableTo,
+        timeLimitSeconds: quiz.timeLimitSeconds,
+        allowUnlimitedAttempts: quiz.allowUnlimitedAttempts,
+        accessCode: quiz.accessCode,
+        questionCount: 0,
+        questions: [],
+      };
+    }
+    if (quiz.availableTo && now > quiz.availableTo) {
+      return {
+        _id: quiz._id,
+        title: quiz.title,
+        description: quiz.description,
+        status: "expired" as const,
+        availableFrom: quiz.availableFrom,
+        availableTo: quiz.availableTo,
+        timeLimitSeconds: quiz.timeLimitSeconds,
+        allowUnlimitedAttempts: quiz.allowUnlimitedAttempts,
+        accessCode: quiz.accessCode,
+        questionCount: 0,
+        questions: [],
+      };
+    }
+
     const questions = await ctx.db
       .query("questions")
       .withIndex("byQuizId", (q) => q.eq("quizId", quiz._id))
@@ -353,9 +425,62 @@ export const getPublicQuizByAccessCode = query({
       _id: quiz._id,
       title: quiz.title,
       description: quiz.description,
+      status: "available" as const,
+      availableFrom: quiz.availableFrom,
+      availableTo: quiz.availableTo,
       timeLimitSeconds: quiz.timeLimitSeconds,
+      allowUnlimitedAttempts: quiz.allowUnlimitedAttempts,
+      accessCode: quiz.accessCode,
       questionCount: questions.length,
       questions: safeQuestions,
+    };
+  },
+});
+
+// ─── SCORE QUIZ (no auth required) ──────────────────────────────
+// Accepts answers and returns score without persisting — used for
+// immediate score display when allowUnlimitedAttempts is true
+
+export const scoreQuiz = query({
+  args: {
+    quizId: v.id("quizzes"),
+    answers: v.array(
+      v.object({
+        questionId: v.id("questions"),
+        selectedOptionIndex: v.number(),
+      })
+    ),
+  },
+  handler: async (ctx, args) => {
+    const questions = await ctx.db
+      .query("questions")
+      .withIndex("byQuizId", (q) => q.eq("quizId", args.quizId))
+      .collect();
+
+    const questionMap = new Map(questions.map((q) => [q._id.toString(), q]));
+
+    let correctCount = 0;
+    const enrichedAnswers = args.answers.map((ans) => {
+      const question = questionMap.get(ans.questionId.toString());
+      const isCorrect = question ? question.answer === ans.selectedOptionIndex : false;
+      if (isCorrect) correctCount++;
+      return {
+        questionId: ans.questionId,
+        selectedOptionIndex: ans.selectedOptionIndex,
+        isCorrect,
+      };
+    });
+
+    const totalQuestions = questions.length;
+    const percentage = totalQuestions > 0
+      ? Math.round((correctCount / totalQuestions) * 100)
+      : 0;
+
+    return {
+      score: correctCount,
+      total: totalQuestions,
+      percentage,
+      answers: enrichedAnswers,
     };
   },
 });
@@ -367,7 +492,7 @@ export const updateQuestion = mutation({
     questionId: v.id("questions"),
     question: v.optional(v.string()),
     explanation: v.optional(v.string()),
-    answer: v.optional(v.string()),
+    answer: v.optional(v.number()),
     options: v.optional(
       v.array(
         v.object({
@@ -436,7 +561,7 @@ export const addQuestion = mutation({
     quizId: v.id("quizzes"),
     question: v.string(),
     explanation: v.string(),
-    answer: v.string(),
+    answer: v.number(),
     options: v.array(
       v.object({
         text: v.string(),

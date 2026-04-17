@@ -3,6 +3,7 @@ import { ConvexProvider, ConvexReactClient } from "convex/react"
 import { ClerkProvider, useAuth } from "@clerk/react-router"
 import { ConvexProviderWithClerk } from "convex/react-clerk"
 import { ThemeProvider } from "@/components/ThemeProvider"
+import { Toaster } from "@/components/ui/sonner"
 
 const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY ?? ""
 if (!PUBLISHABLE_KEY) {
@@ -20,6 +21,7 @@ export default function RootLayout() {
         <ThemeProvider>
           <ConvexProvider client={convex}>
             <Outlet />
+            <Toaster richColors closeButton position="bottom-right" />
           </ConvexProvider>
         </ThemeProvider>
       </ConvexProviderWithClerk>

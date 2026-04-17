@@ -56,7 +56,7 @@ export default defineSchema({
   quizzes: defineTable({
     userId: v.id("users"),
     classId: v.optional(v.id("classes")),
-    prompt: v.string(),
+    prompt: v.optional(v.string()),          // optional — manual quizzes have no prompt
     title: v.string(),
     description: v.optional(v.string()),
     timeLimitSeconds: v.optional(v.number()),
@@ -67,13 +67,12 @@ export default defineSchema({
     isPublished: v.boolean(),
     isPublic: v.boolean(),
     accessCode: v.string(),
-    accessLink: v.string(),
+    // accessLink removed — we only use accessCode now
     createdAt: v.number(),
   })
     .index("byUserId", ["userId"])
     .index("byClassId", ["classId"])
-    .index("byAccessCode", ["accessCode"])
-    .index("byAccessLink", ["accessLink"]),
+    .index("byAccessCode", ["accessCode"]),
 
   // ─── QUESTIONS ────────────────────────────────────────────────
   // Options embedded as array — no separate options table needed
@@ -81,7 +80,7 @@ export default defineSchema({
     quizId: v.id("quizzes"),
     question: v.string(),
     explanation: v.string(),
-    answer: v.string(),
+    answer: v.number(),            // 0-based index into the options array
     orderIndex: v.number(),
     options: v.array(
       v.object({
@@ -105,7 +104,7 @@ export default defineSchema({
     answers: v.array(
       v.object({
         questionId: v.id("questions"),
-        selectedOptionText: v.string(),
+        selectedOptionIndex: v.number(),   // 0-based index of the selected option
         isCorrect: v.boolean(),
       })
     ),

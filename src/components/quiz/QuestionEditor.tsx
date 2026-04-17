@@ -1,6 +1,7 @@
 import { useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -29,7 +30,7 @@ interface QuestionData {
   _id: Id<"questions">;
   question: string;
   explanation: string;
-  answer: string;
+  answer: number;          // 0-based index of the correct option
   orderIndex: number;
   options: { text: string; isCorrect: boolean }[];
 }
@@ -70,14 +71,14 @@ export function QuestionEditor({ questionData, index }: QuestionEditorProps) {
         question,
         explanation,
         answer,
-        options: options.map((opt) => ({
+        options: options.map((opt, i) => ({
           text: opt.text,
-          isCorrect: opt.text === answer,
+          isCorrect: i === answer,
         })),
       });
       setHasChanges(false);
     } catch (e) {
-      console.error("Failed to save question:", e);
+      toast.error("Failed to save question: " + (e as Error).message);
     }
   };
 
@@ -111,32 +112,17 @@ export function QuestionEditor({ questionData, index }: QuestionEditorProps) {
     scheduleAutoSave();
   };
 
-  const handleAnswerChange = (value: string) => {
-    setAnswer(value);
-    setOptions((prev) =>
-      prev.map((opt) => ({ ...opt, isCorrect: opt.text === value }))
-    );
-    scheduleAutoSave();
-  };
-
   const handleOptionChange = (optionIndex: number, value: string) => {
-    const wasCorrect = options[optionIndex].text === answer;
     setOptions((prev) =>
       prev.map((opt, i) =>
-        i === optionIndex
-          ? { text: value, isCorrect: wasCorrect ? true : opt.isCorrect }
-          : opt
+        i === optionIndex ? { ...opt, text: value } : opt
       )
     );
-    if (wasCorrect) {
-      setAnswer(value);
-    }
     scheduleAutoSave();
   };
 
   const handleSetCorrect = (optionIndex: number) => {
-    const newAnswer = options[optionIndex].text;
-    setAnswer(newAnswer);
+    setAnswer(optionIndex);
     setOptions((prev) =>
       prev.map((opt, i) => ({ ...opt, isCorrect: i === optionIndex }))
     );
@@ -146,8 +132,9 @@ export function QuestionEditor({ questionData, index }: QuestionEditorProps) {
   const handleDelete = async () => {
     try {
       await deleteQuestion({ questionId: questionData._id });
+      toast.success("Question deleted.");
     } catch (e) {
-      console.error("Failed to delete question:", e);
+      toast.error("Failed to delete question: " + (e as Error).message);
     }
   };
 
@@ -203,17 +190,17 @@ export function QuestionEditor({ questionData, index }: QuestionEditorProps) {
           </div>
 
           <div className="flex flex-col gap-2">
-            <Label>Options</Label>
+            <Label>Options (click to mark correct)</Label>
             {options.map((opt, oIndex) => (
               <div key={oIndex} className="flex items-center gap-2">
                 <Button
-                  variant={opt.text === answer ? "default" : "outline"}
+                  variant={oIndex === answer ? "default" : "outline"}
                   size="icon"
                   className="size-8 shrink-0"
                   onClick={() => handleSetCorrect(oIndex)}
-                  title={opt.text === answer ? "Correct answer" : "Set as correct answer"}
+                  title={oIndex === answer ? "Correct answer" : "Set as correct answer"}
                 >
-                  {opt.text === answer ? (
+                  {oIndex === answer ? (
                     <IconCheck />
                   ) : (
                     <span className="text-xs font-semibold">
@@ -239,14 +226,6 @@ export function QuestionEditor({ questionData, index }: QuestionEditorProps) {
               rows={2}
               className="resize-none"
               placeholder="Explain why the correct answer is right..."
-            />
-          </div>
-
-          <div className="flex flex-col gap-1">
-            <Label className="text-chart-2">Correct Answer</Label>
-            <Input
-              value={answer}
-              onChange={(e) => handleAnswerChange(e.target.value)}
             />
           </div>
         </div>

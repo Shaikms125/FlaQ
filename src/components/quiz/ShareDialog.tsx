@@ -1,6 +1,7 @@
 import { useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
+import { toast } from "sonner";
 import {
   Dialog,
   DialogContent,
@@ -35,12 +36,19 @@ export function ShareDialog({ quizId, accessCode, isPublic, trigger }: ShareDial
   const handleCopy = async () => {
     await navigator.clipboard.writeText(shareUrl);
     setCopied(true);
+    toast.success("Link copied to clipboard!");
     setTimeout(() => setCopied(false), 2000);
   };
 
   const handleTogglePublic = async (checked: boolean) => {
     setPublicState(checked);
-    await updateQuiz({ quizId, isPublic: checked });
+    try {
+      await updateQuiz({ quizId, isPublic: checked });
+      toast.success(checked ? "Quiz is now public" : "Quiz is now private");
+    } catch (e) {
+      toast.error("Failed to update visibility: " + (e as Error).message);
+      setPublicState(!checked); // revert on error
+    }
   };
 
   return (

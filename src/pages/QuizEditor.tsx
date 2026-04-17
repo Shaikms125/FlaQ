@@ -2,6 +2,7 @@ import { useParams, useNavigate } from "react-router";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
+import { toast } from "sonner";
 import { QuestionEditor } from "@/components/quiz/QuestionEditor";
 import { QuizSettingsPanel } from "@/components/quiz/QuizSettingsPanel";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -38,6 +39,8 @@ export default function QuizEditor() {
   const [hasMetaChanges, setHasMetaChanges] = useState(false);
 
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const questionsEndRef = useRef<HTMLDivElement | null>(null);
+  const prevQuestionCount = useRef<number>(0);
 
   // Sync state when quiz data loads
   useEffect(() => {
@@ -46,6 +49,19 @@ export default function QuizEditor() {
       setDescription(quizData.description ?? "");
     }
   }, [quizData]);
+
+  // Scroll to bottom when a new question is added
+  useEffect(() => {
+    if (quizData && quizData.questions.length > prevQuestionCount.current) {
+      // A question was added — scroll to it
+      setTimeout(() => {
+        questionsEndRef.current?.scrollIntoView({ behavior: "smooth" });
+      }, 100);
+    }
+    if (quizData) {
+      prevQuestionCount.current = quizData.questions.length;
+    }
+  }, [quizData?.questions.length]);
 
   // Auto-save metadata with debounce
   const scheduleMetaSave = useCallback(() => {
@@ -63,7 +79,7 @@ export default function QuizEditor() {
         });
         setHasMetaChanges(false);
       } catch (e) {
-        console.error("Failed to save quiz metadata:", e);
+        toast.error("Failed to save quiz metadata: " + (e as Error).message);
       }
     }, 1500);
   }, [quizId, title, description, updateQuiz]);
@@ -117,7 +133,7 @@ export default function QuizEditor() {
         quizId: quizId as Id<"quizzes">,
         question: "New question",
         explanation: "",
-        answer: "Option A",
+        answer: 0,
         options: [
           { text: "Option A", isCorrect: true },
           { text: "Option B", isCorrect: false },
@@ -126,7 +142,7 @@ export default function QuizEditor() {
         ],
       });
     } catch (e) {
-      console.error("Failed to add question:", e);
+      toast.error("Failed to add question: " + (e as Error).message);
     }
   };
 
@@ -253,6 +269,9 @@ export default function QuizEditor() {
                   </Button>
                 </div>
               )}
+
+              {/* Scroll anchor */}
+              <div ref={questionsEndRef} />
             </div>
           </div>
         </TabsContent>
@@ -265,6 +284,8 @@ export default function QuizEditor() {
               timeLimitSeconds={quizData.timeLimitSeconds}
               allowUnlimitedAttempts={quizData.allowUnlimitedAttempts}
               maxAttempts={quizData.maxAttempts}
+              availableFrom={quizData.availableFrom}
+              availableTo={quizData.availableTo}
             />
           </div>
         </TabsContent>

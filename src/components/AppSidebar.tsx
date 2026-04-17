@@ -1,6 +1,5 @@
 import logo from "@/assets/flaq.svg"
 import { useNavigate, useLocation } from "react-router"
-import { QuizGeneratorModal } from "@/components/QuizGeneratorModal"
 import {
   Sidebar,
   SidebarContent,
@@ -13,7 +12,7 @@ import {
   SidebarMenuItem,
   SidebarRail,
 } from "@/components/ui/sidebar"
-import { IconNotebook, IconHome } from "@tabler/icons-react"
+import { IconNotebook, IconHome, IconWand } from "@tabler/icons-react"
 
 export default function AppSidebar() {
   const navigate = useNavigate()
@@ -37,7 +36,19 @@ export default function AppSidebar() {
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
-              <QuizGeneratorModal />
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  tooltip="Create Quiz"
+                  data-active={location.pathname === "/create"}
+                  onClick={() => navigate("/create")}
+                  className="border border-sidebar-border bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground data-active:bg-primary data-active:text-primary-foreground"
+                >
+                  <IconWand />
+                  <span className="truncate group-data-[collapsible=icon]:hidden">
+                    Create Quiz
+                  </span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

@@ -8,6 +8,7 @@ import Home from "./pages/Home"
 import MyQuizzes from "./pages/MyQuizzes"
 import QuizEditor from "./pages/QuizEditor"
 import QuizScores from "./pages/QuizScores"
+import CreateQuiz from "./pages/CreateQuiz"
 import PublicQuizTaker from "./pages/PublicQuizTaker"
 
 const router = createBrowserRouter([
@@ -38,6 +39,10 @@ const router = createBrowserRouter([
               {
                 index: true,
                 element: <Home />,
+              },
+              {
+                path: "create",
+                element: <CreateQuiz />,
               },
               {
                 path: "my-quizzes",

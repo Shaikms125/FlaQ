@@ -11,7 +11,7 @@ export const submitAttempt = mutation({
     answers: v.array(
       v.object({
         questionId: v.id("questions"),
-        selectedOptionText: v.string(),
+        selectedOptionIndex: v.number(),
       })
     ),
   },
@@ -28,21 +28,6 @@ export const submitAttempt = mutation({
     const quiz = await ctx.db.get(args.quizId);
     if (!quiz) throw new Error("Quiz not found");
 
-    // Check attempt limits (unless practice or unlimited)
-    if (!args.isPractice && !quiz.allowUnlimitedAttempts && quiz.maxAttempts) {
-      const existingAttempts = await ctx.db
-        .query("quiz_attempts")
-        .withIndex("byStudentAndQuiz", (q) =>
-          q.eq("studentId", user._id).eq("quizId", args.quizId)
-        )
-        .collect();
-
-      const gradedAttempts = existingAttempts.filter((a) => !a.isPractice);
-      if (gradedAttempts.length >= quiz.maxAttempts) {
-        throw new Error("Maximum attempts reached for this quiz");
-      }
-    }
-
     // Fetch all questions for this quiz to verify answers
     const questions = await ctx.db
       .query("questions")
@@ -55,10 +40,11 @@ export const submitAttempt = mutation({
     let correctCount = 0;
     const enrichedAnswers = args.answers.map((ans) => {
       const question = questionMap.get(ans.questionId.toString());
-      const isCorrect = question ? question.answer === ans.selectedOptionText : false;
+      const isCorrect = question ? question.answer === ans.selectedOptionIndex : false;
       if (isCorrect) correctCount++;
       return {
-        ...ans,
+        questionId: ans.questionId,
+        selectedOptionIndex: ans.selectedOptionIndex,
         isCorrect,
       };
     });
@@ -67,6 +53,50 @@ export const submitAttempt = mutation({
     const percentage = totalQuestions > 0
       ? Math.round((correctCount / totalQuestions) * 100)
       : 0;
+
+    // Check for existing attempt (for upsert on unlimited attempts)
+    const existingAttempts = await ctx.db
+      .query("quiz_attempts")
+      .withIndex("byStudentAndQuiz", (q) =>
+        q.eq("studentId", user._id).eq("quizId", args.quizId)
+      )
+      .collect();
+
+    if (quiz.allowUnlimitedAttempts) {
+      // UPSERT: Replace previous attempt if one exists
+      const existingAttempt = existingAttempts.find((a) => !a.isPractice || args.isPractice);
+      if (existingAttempt) {
+        await ctx.db.patch(existingAttempt._id, {
+          isPractice: args.isPractice,
+          score: correctCount,
+          percentage,
+          submittedAt: Date.now(),
+          answers: enrichedAnswers,
+        });
+
+        return {
+          attemptId: existingAttempt._id,
+          score: correctCount,
+          total: totalQuestions,
+          percentage,
+        };
+      }
+    } else {
+      // Check attempt limits (single attempt mode)
+      if (!args.isPractice && quiz.maxAttempts) {
+        const gradedAttempts = existingAttempts.filter((a) => !a.isPractice);
+        if (gradedAttempts.length >= quiz.maxAttempts) {
+          throw new Error("Maximum attempts reached for this quiz");
+        }
+      }
+      // For single-attempt quizzes, block duplicate submissions
+      if (!args.isPractice) {
+        const alreadySubmitted = existingAttempts.some((a) => !a.isPractice);
+        if (alreadySubmitted) {
+          throw new Error("You have already submitted this quiz");
+        }
+      }
+    }
 
     const attemptId = await ctx.db.insert("quiz_attempts", {
       quizId: args.quizId,
@@ -85,6 +115,34 @@ export const submitAttempt = mutation({
       total: totalQuestions,
       percentage,
     };
+  },
+});
+
+// ─── GET MY ATTEMPT FOR A SPECIFIC QUIZ ─────────────────────────
+// Returns the user's existing attempt for a quiz (for "already taken" detection)
+
+export const getMyAttemptForQuiz = query({
+  args: { quizId: v.id("quizzes") },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) return null;
+
+    const user = await ctx.db
+      .query("users")
+      .withIndex("byExternalId", (q) => q.eq("externalId", identity.subject))
+      .unique();
+    if (!user) return null;
+
+    const attempts = await ctx.db
+      .query("quiz_attempts")
+      .withIndex("byStudentAndQuiz", (q) =>
+        q.eq("studentId", user._id).eq("quizId", args.quizId)
+      )
+      .collect();
+
+    // Return the most recent non-practice attempt, or any attempt
+    const graded = attempts.find((a) => !a.isPractice);
+    return graded ?? attempts[0] ?? null;
   },
 });
 
