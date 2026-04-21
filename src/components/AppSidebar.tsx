@@ -13,18 +13,18 @@ import {
   SidebarRail,
 } from "@/components/ui/sidebar"
 import { IconNotebook, IconHome, IconWand, IconSchool } from "@tabler/icons-react"
-import { useQuizStore } from "@/hooks/useQuizStore"
+//import { useQuizStore } from "@/hooks/useQuizStore"
 
 export default function AppSidebar() {
   const navigate = useNavigate()
   const location = useLocation()
-  const { setDefaultTab } = useQuizStore()
+  //const { setDefaultTab } = useQuizStore()
 
   return (
     <Sidebar collapsible="icon" variant="sidebar">
       <SidebarHeader className="border-b border-sidebar-border/50 bg-sidebar/50 backdrop-blur-sm">
         <div className="flex items-center gap-3 px-4 py-3 transition-all group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-2">
-          <div className="flex aspect-square size-9 items-center justify-center rounded-xl bg-linear-to-br from-indigo-500 via-purple-500 to-pink-500 ring-1 ring-white/10">
+          <div className="flex aspect-square size-9 items-center justify-center rounded-xl bg-cyan-800 ring-1 ring-white/20">
             <img src={logo} alt="FlaQ Logo" className="size-6 brightness-0 invert" />
           </div>
           <div className="flex flex-col gap-0 group-data-[collapsible=icon]:hidden">

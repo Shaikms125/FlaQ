@@ -114,11 +114,11 @@ function BaseQuestionEditor({ questionData, index, onChange, onDelete }: BaseQue
         <div className="flex items-center justify-between">
           <CardTitle className="text-base">Question {index + 1}</CardTitle>
           <AlertDialog>
-            <AlertDialogTrigger asChild>
+            <AlertDialogTrigger render={
               <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-destructive">
                 <IconTrash />
               </Button>
-            </AlertDialogTrigger>
+            } />
             <AlertDialogContent>
               <AlertDialogHeader>
                 <AlertDialogTitle>Delete Question</AlertDialogTitle>

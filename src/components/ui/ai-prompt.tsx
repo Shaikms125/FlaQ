@@ -120,7 +120,7 @@ export default function AIPrompt({
                   
                   {/* Time Limit Selector */}
                   <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
+                    <DropdownMenuTrigger render={
                       <Button
                         className="flex h-8 items-center gap-1 rounded-md pr-2 pl-1 text-xs hover:bg-black/10 focus-visible:ring-1 focus-visible:ring-blue-500 focus-visible:ring-offset-0 dark:text-white dark:hover:bg-white/10"
                         variant="ghost"
@@ -132,7 +132,7 @@ export default function AIPrompt({
                            <ChevronDown className="h-3 w-3 opacity-50" />
                          </div>
                       </Button>
-                    </DropdownMenuTrigger>
+                    } />
                     <DropdownMenuContent
                       className={cn(
                         "min-w-[10rem]",
@@ -162,7 +162,7 @@ export default function AIPrompt({
 
                   {/* Num Questions Selector */}
                   <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
+                    <DropdownMenuTrigger render={
                       <Button
                         className="flex h-8 items-center gap-1 rounded-md pr-2 pl-1 text-xs hover:bg-black/10 focus-visible:ring-1 focus-visible:ring-blue-500 focus-visible:ring-offset-0 dark:text-white dark:hover:bg-white/10"
                         variant="ghost"
@@ -174,7 +174,7 @@ export default function AIPrompt({
                            <ChevronDown className="h-3 w-3 opacity-50" />
                          </div>
                       </Button>
-                    </DropdownMenuTrigger>
+                    } />
                     <DropdownMenuContent
                       className={cn(
                         "min-w-[10rem]",
