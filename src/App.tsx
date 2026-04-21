@@ -8,8 +8,10 @@ import Home from "./pages/Home"
 import MyQuizzes from "./pages/MyQuizzes"
 import QuizEditor from "./pages/QuizEditor"
 import QuizScores from "./pages/QuizScores"
-import CreateQuiz from "./pages/CreateQuiz"
 import PublicQuizTaker from "./pages/PublicQuizTaker"
+import GenerateQuiz from "./pages/GenerateQuiz"
+import ClassesDashboard from "./pages/ClassesDashboard"
+import ClassDetail from "./pages/ClassDetail"
 
 const router = createBrowserRouter([
   {
@@ -41,8 +43,8 @@ const router = createBrowserRouter([
                 element: <Home />,
               },
               {
-                path: "create",
-                element: <CreateQuiz />,
+                path: "generate",
+                element: <GenerateQuiz />,
               },
               {
                 path: "my-quizzes",
@@ -55,6 +57,14 @@ const router = createBrowserRouter([
               {
                 path: "my-quizzes/:quizId/scores",
                 element: <QuizScores />,
+              },
+              {
+                path: "classes",
+                element: <ClassesDashboard />,
+              },
+              {
+                path: "classes/:classId",
+                element: <ClassDetail />,
               },
             ],
           },

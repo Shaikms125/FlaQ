@@ -52,10 +52,6 @@ export default function QuizScores() {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-4 p-6">
         <p className="text-lg font-semibold">Quiz not found</p>
-        <Button variant="outline" onClick={() => navigate("/my-quizzes")}>
-          <IconArrowLeft data-icon="inline-start" />
-          Back to My Quizzes
-        </Button>
       </div>
     );
   }
@@ -72,13 +68,6 @@ export default function QuizScores() {
     <div className="flex flex-1 flex-col gap-6 p-6">
       {/* Header */}
       <div className="flex items-center gap-4">
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => navigate("/my-quizzes")}
-        >
-          <IconArrowLeft />
-        </Button>
         <div className="flex flex-col gap-1">
           <h1 className="text-2xl font-bold tracking-tight">Quiz Scores</h1>
           <p className="text-sm text-muted-foreground">{quizData.title}</p>

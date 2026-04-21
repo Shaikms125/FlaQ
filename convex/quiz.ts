@@ -4,6 +4,85 @@ import { paginationOptsValidator } from "convex/server";
 
 // ─── AI GENERATION ──────────────────────────────────────────────
 
+const MODEL_FALLBACKS = [
+  "meta-llama/llama-3.3-70b-instruct:free",
+  "google/gemma-3-27b-it:free",
+  "nousresearch/hermes-3-llama-3.1-405b:free",
+  "qwen/qwen3-coder:free",
+  "nvidia/nemotron-3-super-120b-a12b:free"
+];
+
+async function callOpenRouter(
+  apiKey: string,
+  model: string,
+  systemPrompt: string,
+  userPrompt: string,
+) {
+  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+    }),
+  });
+
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    throw new Error(`${response.status} ${response.statusText}${body ? ` — ${body.slice(0, 200)}` : ""}`);
+  }
+
+  return response.json();
+}
+
+function parseQuizResponse(data: any, optionCount: number) {
+  let result: {
+    title: string;
+    questions: {
+      question: string;
+      options: string[];
+      answerIndex: number;
+      explanation: string;
+    }[];
+  };
+
+  let content: string = data.choices[0].message.content.trim();
+  if (content.startsWith("```json")) {
+    content = content.replace(/^```json\s*/, "").replace(/\s*```$/, "");
+  } else if (content.startsWith("```")) {
+    content = content.replace(/^```\s*/, "").replace(/\s*```$/, "");
+  }
+
+  const parsed = JSON.parse(content);
+
+  if (parsed.title && Array.isArray(parsed.questions)) {
+    result = parsed;
+  } else if (Array.isArray(parsed)) {
+    result = { title: "Generated Quiz", questions: parsed };
+  } else {
+    throw new Error("Invalid format. Expected { title, questions } or an array.");
+  }
+
+  for (const q of result.questions) {
+    if (typeof q.answerIndex !== "number" || q.answerIndex < 0 || q.answerIndex >= q.options.length) {
+      if ("answer" in q && typeof (q as any).answer === "string") {
+        const idx = q.options.indexOf((q as any).answer);
+        q.answerIndex = idx >= 0 ? idx : 0;
+      } else {
+        q.answerIndex = 0;
+      }
+    }
+  }
+
+  return result;
+}
+
 export const generateQuiz = action({
   args: {
     prompt: v.string(),
@@ -24,18 +103,7 @@ export const generateQuiz = action({
     const optionCount = args.numOptions ?? 4;
     const questionCount = args.numQuestions ?? 5;
 
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "openai/gpt-oss-120b:free",
-        messages: [
-          {
-            role: "system",
-            content: `You are an expert quiz generator. Generate a multiple-choice quiz based on the user's prompt.
+    const systemPrompt = `You are an expert quiz generator. Generate a multiple-choice quiz based on the user's prompt.
 Respond ONLY with a valid JSON object (no markdown fencing). The object must have:
 - "title": string (a short, descriptive title for the quiz)
 - "questions": array of exactly ${questionCount} question objects
@@ -44,71 +112,21 @@ Each question object must have exactly these keys:
 - "question": string (the question text)
 - "options": array of exactly ${optionCount} strings (the possible answers)
 - "answerIndex": number (the 0-based index of the correct option in the options array)
-- "explanation": string (a brief explanation of why the answer is correct)`
-          },
-          {
-            role: "user",
-            content: args.prompt
-          }
-        ]
-      })
-    });
+- "explanation": string (a brief explanation of why the answer is correct)`;
 
-    if (!response.ok) {
-      throw new Error("Failed to generate quiz: " + response.statusText);
+    let lastError: Error | null = null;
+
+    for (const model of MODEL_FALLBACKS) {
+      try {
+        const data = await callOpenRouter(apiKey, model, systemPrompt, args.prompt);
+        return parseQuizResponse(data, optionCount);
+      } catch (e) {
+        lastError = e as Error;
+        console.warn(`Model ${model} failed, trying next fallback...`, lastError.message);
+      }
     }
 
-    const data = await response.json();
-    let result: {
-      title: string;
-      questions: {
-        question: string;
-        options: string[];
-        answerIndex: number;
-        explanation: string;
-      }[];
-    };
-
-    try {
-      let content = data.choices[0].message.content.trim();
-      // Remove any markdown fencing if present
-      if (content.startsWith("```json")) {
-        content = content.replace(/^```json\s*/, "").replace(/\s*```$/, "");
-      } else if (content.startsWith("```")) {
-        content = content.replace(/^```\s*/, "").replace(/\s*```$/, "");
-      }
-      
-      const parsed = JSON.parse(content);
-      
-      // Handle both formats: { title, questions } or just an array
-      if (parsed.title && Array.isArray(parsed.questions)) {
-        result = parsed;
-      } else if (Array.isArray(parsed)) {
-        result = {
-          title: "Generated Quiz",
-          questions: parsed,
-        };
-      } else {
-        throw new Error("Invalid format. Expected { title, questions } or an array.");
-      }
-
-      // Validate and normalize answerIndex for each question
-      for (const q of result.questions) {
-        if (typeof q.answerIndex !== "number" || q.answerIndex < 0 || q.answerIndex >= q.options.length) {
-          // Fallback: try to find by matching old "answer" field
-          if ("answer" in q && typeof (q as any).answer === "string") {
-            const idx = q.options.indexOf((q as any).answer);
-            q.answerIndex = idx >= 0 ? idx : 0;
-          } else {
-            q.answerIndex = 0;
-          }
-        }
-      }
-    } catch (e) {
-      throw new Error("Failed to parse quiz response: " + (e as Error).message);
-    }
-    
-    return result;
+    throw new Error("All AI models failed to generate quiz. Last error: " + (lastError?.message ?? "unknown"));
   }
 });
 
@@ -121,10 +139,12 @@ export const saveQuiz = mutation({
     title: v.string(),
     description: v.optional(v.string()),
     isPublic: v.optional(v.boolean()),
+    isPublished: v.optional(v.boolean()),
     timeLimitSeconds: v.optional(v.number()),
     allowUnlimitedAttempts: v.optional(v.boolean()),
     availableFrom: v.optional(v.number()),
     availableTo: v.optional(v.number()),
+    classId: v.optional(v.id("classes")),
     questions: v.array(
       v.object({
         question: v.string(),
@@ -157,12 +177,13 @@ export const saveQuiz = mutation({
       prompt: args.prompt,
       title: args.title,
       description: args.description,
-      isPublished: false,
+      isPublished: args.isPublished ?? false,
       isPublic: args.isPublic ?? false,
-      allowUnlimitedAttempts: args.allowUnlimitedAttempts ?? true,
+      allowUnlimitedAttempts: args.allowUnlimitedAttempts ?? false,
       timeLimitSeconds: args.timeLimitSeconds,
       availableFrom: args.availableFrom,
       availableTo: args.availableTo,
+      classId: args.classId,
       accessCode,
       createdAt: Date.now(),
     });
@@ -370,39 +391,78 @@ export const getPublicQuizByAccessCode = query({
       .withIndex("byAccessCode", (q) => q.eq("accessCode", args.accessCode))
       .unique();
 
-    if (!quiz || !quiz.isPublic) return null;
+    if (!quiz) return null;
+
+    let isCreator = false;
+    const identity = await ctx.auth.getUserIdentity();
+    if (identity) {
+      const user = await ctx.db
+        .query("users")
+        .withIndex("byExternalId", (q) => q.eq("externalId", identity.subject))
+        .unique();
+      if (user && user._id === quiz.userId) {
+        isCreator = true;
+      }
+    }
+
+    if (!quiz.isPublic && !isCreator) {
+      // If quiz is not public, check if user is a member of the linked class
+      if (quiz.classId && identity) {
+        const user = await ctx.db
+          .query("users")
+          .withIndex("byExternalId", (q) => q.eq("externalId", identity.subject))
+          .unique();
+        if (user) {
+          const membership = await ctx.db
+            .query("class_members")
+            .withIndex("byClassAndUser", (q) => 
+              q.eq("classId", quiz.classId!).eq("userId", user._id)
+            )
+            .unique();
+          if (!membership) return null;
+        } else {
+          return null;
+        }
+      } else {
+        return null;
+      }
+    }
 
     // Check availability window
     const now = Date.now();
-    if (quiz.availableFrom && now < quiz.availableFrom) {
-      return {
-        _id: quiz._id,
-        title: quiz.title,
-        description: quiz.description,
-        status: "not-yet" as const,
-        availableFrom: quiz.availableFrom,
-        availableTo: quiz.availableTo,
-        timeLimitSeconds: quiz.timeLimitSeconds,
-        allowUnlimitedAttempts: quiz.allowUnlimitedAttempts,
-        accessCode: quiz.accessCode,
-        questionCount: 0,
-        questions: [],
-      };
-    }
-    if (quiz.availableTo && now > quiz.availableTo) {
-      return {
-        _id: quiz._id,
-        title: quiz.title,
-        description: quiz.description,
-        status: "expired" as const,
-        availableFrom: quiz.availableFrom,
-        availableTo: quiz.availableTo,
-        timeLimitSeconds: quiz.timeLimitSeconds,
-        allowUnlimitedAttempts: quiz.allowUnlimitedAttempts,
-        accessCode: quiz.accessCode,
-        questionCount: 0,
-        questions: [],
-      };
+    if (!isCreator) {
+      if (quiz.availableFrom && now < quiz.availableFrom) {
+        return {
+          _id: quiz._id,
+          title: quiz.title,
+          description: quiz.description,
+          status: "not-yet" as const,
+          availableFrom: quiz.availableFrom,
+          availableTo: quiz.availableTo,
+          timeLimitSeconds: quiz.timeLimitSeconds,
+          allowUnlimitedAttempts: quiz.allowUnlimitedAttempts,
+          accessCode: quiz.accessCode,
+          questionCount: 0,
+          questions: [],
+          isCreator,
+        };
+      }
+      if (quiz.availableTo && now > quiz.availableTo) {
+        return {
+          _id: quiz._id,
+          title: quiz.title,
+          description: quiz.description,
+          status: "expired" as const,
+          availableFrom: quiz.availableFrom,
+          availableTo: quiz.availableTo,
+          timeLimitSeconds: quiz.timeLimitSeconds,
+          allowUnlimitedAttempts: quiz.allowUnlimitedAttempts,
+          accessCode: quiz.accessCode,
+          questionCount: 0,
+          questions: [],
+          isCreator,
+        };
+      }
     }
 
     const questions = await ctx.db
@@ -433,6 +493,7 @@ export const getPublicQuizByAccessCode = query({
       accessCode: quiz.accessCode,
       questionCount: questions.length,
       questions: safeQuestions,
+      isCreator,
     };
   },
 });
@@ -468,6 +529,7 @@ export const scoreQuiz = query({
         questionId: ans.questionId,
         selectedOptionIndex: ans.selectedOptionIndex,
         isCorrect,
+        correctOptionIndex: question?.answer, // EXPOSE THE RIGHT ANSWER!
       };
     });
 
@@ -644,3 +706,4 @@ export const getQuizAttemptsWithUsers = query({
     return enriched;
   },
 });
+

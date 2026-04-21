@@ -41,6 +41,12 @@ interface ScoreResult {
   score: number;
   total: number;
   percentage: number;
+  answers?: Array<{
+    questionId: string;
+    selectedOptionIndex: number;
+    isCorrect: boolean;
+    correctOptionIndex?: number;
+  }>;
 }
 
 export default function PublicQuizTaker() {
@@ -70,28 +76,71 @@ export default function PublicQuizTaker() {
       : "skip"
   );
 
-  // If user has already taken a single-attempt quiz, show read-only
+  // If user has already taken a single-attempt quiz, show read-only (UNLESS CREATOR)
   useEffect(() => {
     if (
       quizData &&
       !quizData.allowUnlimitedAttempts &&
+      !quizData.isCreator &&
       existingAttempt &&
-      isAuthenticated
+      isAuthenticated &&
+      quizState === "ready" // Only snap to already-taken if we haven't started or finished the current session
     ) {
       setQuizState("already-taken");
       setScoreResult({
         score: existingAttempt.score,
         total: existingAttempt.answers.length,
         percentage: existingAttempt.percentage,
+        answers: existingAttempt.answers.map(a => ({
+          ...a,
+          questionId: a.questionId.toString()
+        })),
       });
       // Restore their answers for read-only display
       const restored: SelectedAnswers = {};
       for (const ans of existingAttempt.answers) {
-        restored[ans.questionId] = ans.selectedOptionIndex;
+        restored[ans.questionId.toString()] = ans.selectedOptionIndex;
       }
       setSelectedAnswers(restored);
     }
-  }, [quizData, existingAttempt, isAuthenticated]);
+  }, [quizData, existingAttempt, isAuthenticated, quizState]);
+
+  // ─── Submit score (requires auth) ───────────────────────────
+  const handleSubmitScore = useCallback(async () => {
+    if (!quizData || !isAuthenticated || submitting) return;
+
+    setSubmitting(true);
+    try {
+      const answers = Object.entries(selectedAnswers).map(
+        ([questionId, selectedOptionIndex]) => ({
+          questionId: questionId as Id<"questions">,
+          selectedOptionIndex,
+        })
+      );
+
+      const result = await submitAttempt({
+        quizId: quizData._id as Id<"quizzes">,
+        isPractice: false,
+        answers,
+      });
+
+      setScoreResult({
+        score: result.score,
+        total: result.total,
+        percentage: result.percentage,
+        answers: result.answers.map((a: any) => ({
+          ...a,
+          questionId: a.questionId.toString(),
+        })),
+      });
+      setSubmitted(true);
+      toast.success("Score submitted successfully!");
+    } catch (e) {
+      toast.error("Failed to submit: " + (e as Error).message);
+    } finally {
+      setSubmitting(false);
+    }
+  }, [quizData, isAuthenticated, selectedAnswers, submitAttempt, submitting]);
 
   // ─── Auto-submit pending submission after auth return ───────
   useEffect(() => {
@@ -130,6 +179,10 @@ export default function PublicQuizTaker() {
               score: result.score,
               total: result.total,
               percentage: result.percentage,
+              answers: result.answers.map((a: any) => ({
+                ...a,
+                questionId: a.questionId.toString(),
+              })),
             });
             setSubmitted(true);
             setQuizState("finished");
@@ -152,7 +205,7 @@ export default function PublicQuizTaker() {
     } catch {
       localStorage.removeItem(PENDING_SUBMISSION_KEY);
     }
-  }, [isAuthenticated, isAuthLoading, quizData, accessCode]);
+  }, [isAuthenticated, isAuthLoading, quizData, accessCode, submitAttempt]);
 
   // ─── Use scoreQuiz for client-side scoring (unlimited mode) ──
   const scoreAnswers = useQuery(
@@ -175,6 +228,10 @@ export default function PublicQuizTaker() {
         score: scoreAnswers.score,
         total: scoreAnswers.total,
         percentage: scoreAnswers.percentage,
+        answers: scoreAnswers.answers.map(a => ({
+          ...a,
+          questionId: a.questionId.toString()
+        })),
       });
     }
   }, [scoreAnswers, scoreResult, quizState]);
@@ -198,45 +255,16 @@ export default function PublicQuizTaker() {
     if (!quizData) return;
     setQuizState("finished");
 
-    if (!quizData.allowUnlimitedAttempts) {
-      // Single attempt mode: don't show score, require auth
-      // scoreResult stays null — no score shown
+    if (isAuthenticated) {
+      if (quizData.allowUnlimitedAttempts || (!quizData.allowUnlimitedAttempts && quizData.isCreator)) {
+         // Even if unlimited or creator, why not optionally auto-submit? 
+         // User requested: "when taking a test, the score will be submitted right after finishing the quiz no need for submit score."
+         handleSubmitScore();
+      } else {
+         handleSubmitScore();
+      }
     }
-    // For unlimited mode, the scoreQuiz query will fire and populate scoreResult
-  }, [quizData]);
-
-  // ─── Submit score (requires auth) ───────────────────────────
-  const handleSubmitScore = async () => {
-    if (!quizData || !isAuthenticated) return;
-
-    setSubmitting(true);
-    try {
-      const answers = Object.entries(selectedAnswers).map(
-        ([questionId, selectedOptionIndex]) => ({
-          questionId: questionId as Id<"questions">,
-          selectedOptionIndex,
-        })
-      );
-
-      const result = await submitAttempt({
-        quizId: quizData._id as Id<"quizzes">,
-        isPractice: false,
-        answers,
-      });
-
-      setScoreResult({
-        score: result.score,
-        total: result.total,
-        percentage: result.percentage,
-      });
-      setSubmitted(true);
-      toast.success("Score submitted successfully!");
-    } catch (e) {
-      toast.error("Failed to submit: " + (e as Error).message);
-    } finally {
-      setSubmitting(false);
-    }
-  };
+  }, [quizData, isAuthenticated, handleSubmitScore]);
 
   // ─── Sign in to submit (caches data in localStorage) ────────
   const handleSignInToSubmit = () => {
@@ -369,41 +397,58 @@ export default function PublicQuizTaker() {
           {/* Read-only answers */}
           <h2 className="mb-4 text-lg font-semibold">Your Answers (read-only)</h2>
           <div className="flex flex-col gap-4">
-            {quizData.questions.map((q, qIndex) => (
-              <Card key={q._id}>
-                <CardContent className="pt-6">
-                  <p className="mb-3 font-medium">
-                    {qIndex + 1}. {q.question}
-                  </p>
-                  <div className="flex flex-col gap-2">
-                    {q.options.map((opt, oIndex) => {
-                      const wasSelected = selectedAnswers[q._id] === oIndex;
-                      return (
-                        <div
-                          key={oIndex}
-                          className={`flex items-center gap-3 rounded-lg border p-3 ${
-                            wasSelected
-                              ? "border-primary bg-primary/5"
-                              : "border-border opacity-60"
-                          }`}
-                        >
-                          <span
-                            className={`flex size-7 shrink-0 items-center justify-center rounded-full border text-sm font-semibold ${
-                              wasSelected
-                                ? "border-primary bg-primary text-primary-foreground"
-                                : "border-border"
-                            }`}
-                          >
-                            {String.fromCharCode(65 + oIndex)}
-                          </span>
-                          <span className="text-sm">{opt.text}</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+            {quizData.questions.map((q, qIndex) => {
+              const resultAns = scoreResult.answers?.find(a => a.questionId === q._id);
+              const selectedIdx = selectedAnswers[q._id];
+              
+              return (
+                <Card key={q._id} className={resultAns ? (resultAns.isCorrect ? "border-chart-2/50" : "border-destructive/50") : ""}>
+                  <CardContent className="pt-6">
+                    <div className="flex flex-col gap-4">
+                      <p className="font-medium text-base">
+                        {qIndex + 1}. {q.question}
+                      </p>
+                      <div className="flex flex-col gap-2">
+                        {q.options.map((opt, oIndex) => {
+                          const isSelected = selectedIdx === oIndex;
+                          const isCorrectAnswer = resultAns?.correctOptionIndex === oIndex;
+                          const isWrongSelection = isSelected && resultAns && !resultAns.isCorrect;
+                          
+                          let optionClass = "border-border opacity-70";
+                          let circleClass = "border-border";
+                          
+                          if (isCorrectAnswer) {
+                            optionClass = "border-chart-2 bg-chart-2/10 text-foreground font-medium";
+                            circleClass = "border-chart-2 bg-chart-2 text-chart-2-foreground";
+                          } else if (isWrongSelection) {
+                            optionClass = "border-destructive bg-destructive/10 text-destructive font-medium";
+                            circleClass = "border-destructive bg-destructive text-destructive-foreground";
+                          } else if (isSelected && !resultAns) {
+                            // Default selection without grading
+                            optionClass = "border-primary bg-primary/5 text-foreground";
+                            circleClass = "border-primary bg-primary text-primary-foreground";
+                          }
+
+                          return (
+                            <div
+                              key={oIndex}
+                              className={`flex items-center gap-3 rounded-lg border p-3 ${optionClass}`}
+                            >
+                              <span
+                                className={`flex size-7 shrink-0 items-center justify-center rounded-full border text-sm font-semibold ${circleClass}`}
+                              >
+                                {String.fromCharCode(65 + oIndex)}
+                              </span>
+                              <span className="text-sm">{opt.text}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
           </div>
 
           <div className="my-6 flex justify-center">
@@ -550,7 +595,7 @@ export default function PublicQuizTaker() {
             <Button
               size="lg"
               onClick={handleFinishQuiz}
-              disabled={!allAnswered}
+              disabled={!allAnswered || submitting}
               className="shadow-lg"
             >
               <IconCheck data-icon="inline-start" />
@@ -596,7 +641,7 @@ export default function PublicQuizTaker() {
                     </div>
                     {isAuthenticated ? (
                       <Button
-                        onClick={handleSubmitScore}
+                        onClick={() => handleSubmitScore()}
                         disabled={submitting}
                         size="lg"
                       >
@@ -651,7 +696,7 @@ export default function PublicQuizTaker() {
                     </p>
                     {isAuthenticated ? (
                       <Button
-                        onClick={handleSubmitScore}
+                        onClick={() => handleSubmitScore()}
                         disabled={submitting}
                         variant="outline"
                         size="lg"
@@ -671,32 +716,63 @@ export default function PublicQuizTaker() {
             </CardContent>
           </Card>
 
-          {/* Review answers (only if we have a score / unlimited mode) */}
+          {/* Review answers (only if we have a score) */}
           {scoreResult && (
             <>
               <h2 className="mb-4 text-lg font-semibold">Your Answers</h2>
               <div className="flex flex-col gap-4">
-                {quizData.questions.map((q, qIndex) => (
-                  <Card key={q._id}>
-                    <CardContent className="pt-6">
-                      <div className="flex flex-col gap-2">
-                        <p className="font-medium">
-                          {qIndex + 1}. {q.question}
-                        </p>
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm text-muted-foreground">
-                            Your answer:
-                          </span>
-                          <Badge variant="secondary">
-                            {selectedAnswers[q._id] !== undefined
-                              ? q.options[selectedAnswers[q._id]]?.text ?? "Unknown"
-                              : "Not answered"}
-                          </Badge>
-                        </div>
+                {quizData.questions.map((q, qIndex) => {
+                  const resultAns = scoreResult.answers?.find(a => a.questionId === q._id);
+                  const selectedIdx = selectedAnswers[q._id];
+                  
+                  return (
+                    <Card key={q._id} className={resultAns ? (resultAns.isCorrect ? "border-chart-2/50" : "border-destructive/50") : ""}>
+                      <CardContent className="pt-6">
+                        <div className="flex flex-col gap-4">
+                          <p className="font-medium text-base">
+                            {qIndex + 1}. {q.question}
+                          </p>
+                          <div className="flex flex-col gap-2">
+                            {q.options.map((opt, oIndex) => {
+                              const isSelected = selectedIdx === oIndex;
+                              const isCorrectAnswer = resultAns?.correctOptionIndex === oIndex;
+                              const isWrongSelection = isSelected && resultAns && !resultAns.isCorrect;
+                              
+                              let optionClass = "border-border opacity-70";
+                              let circleClass = "border-border";
+                              
+                              if (isCorrectAnswer) {
+                                optionClass = "border-chart-2 bg-chart-2/10 text-foreground font-medium";
+                                circleClass = "border-chart-2 bg-chart-2 text-chart-2-foreground";
+                              } else if (isWrongSelection) {
+                                optionClass = "border-destructive bg-destructive/10 text-destructive font-medium";
+                                circleClass = "border-destructive bg-destructive text-destructive-foreground";
+                              } else if (isSelected && !resultAns) {
+                                // Default selection without grading
+                                optionClass = "border-primary bg-primary/5 text-foreground";
+                                circleClass = "border-primary bg-primary text-primary-foreground";
+                              }
+
+                              return (
+                                <div
+                                  key={oIndex}
+                                  className={`flex items-center gap-3 rounded-lg border p-3 ${optionClass}`}
+                                >
+                                  <span
+                                    className={`flex size-7 shrink-0 items-center justify-center rounded-full border text-sm font-semibold ${circleClass}`}
+                                  >
+                                    {String.fromCharCode(65 + oIndex)}
+                                  </span>
+                                  <span className="text-sm">{opt.text}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
                       </div>
                     </CardContent>
                   </Card>
-                ))}
+                  );
+                })}
               </div>
             </>
           )}

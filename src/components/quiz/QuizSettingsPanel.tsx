@@ -41,7 +41,7 @@ export function QuizSettingsPanel({
     timeLimitSeconds ? Math.floor(timeLimitSeconds / 60) : 10
   );
   const [unlimitedAttempts, setUnlimitedAttempts] = useState(allowUnlimitedAttempts);
-  const [maxAttemptsValue, setMaxAttemptsValue] = useState(maxAttempts ?? 3);
+  const [maxAttemptsValue, setMaxAttemptsValue] = useState(maxAttempts ?? 1);
   const [availableFromValue, setAvailableFromValue] = useState(
     availableFrom ? new Date(availableFrom).toISOString().slice(0, 16) : ""
   );

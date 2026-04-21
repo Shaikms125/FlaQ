@@ -106,6 +106,7 @@ export default defineSchema({
         questionId: v.id("questions"),
         selectedOptionIndex: v.number(),   // 0-based index of the selected option
         isCorrect: v.boolean(),
+        correctOptionIndex: v.optional(v.number()),
       })
     ),
   })

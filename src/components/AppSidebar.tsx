@@ -12,11 +12,13 @@ import {
   SidebarMenuItem,
   SidebarRail,
 } from "@/components/ui/sidebar"
-import { IconNotebook, IconHome, IconWand } from "@tabler/icons-react"
+import { IconNotebook, IconHome, IconWand, IconSchool } from "@tabler/icons-react"
+import { useQuizStore } from "@/hooks/useQuizStore"
 
 export default function AppSidebar() {
   const navigate = useNavigate()
   const location = useLocation()
+  const { setDefaultTab } = useQuizStore()
 
   return (
     <Sidebar collapsible="icon" variant="sidebar">
@@ -39,9 +41,10 @@ export default function AppSidebar() {
               <SidebarMenuItem>
                 <SidebarMenuButton
                   tooltip="Create Quiz"
-                  data-active={location.pathname === "/create"}
-                  onClick={() => navigate("/create")}
-                  className="border border-sidebar-border bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground data-active:bg-primary data-active:text-primary-foreground"
+                  onClick={() => {
+                    navigate("/generate")
+                  }}
+                  className="border border-sidebar-border bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground data-[active=true]:bg-primary data-[active=true]:text-primary-foreground"
                 >
                   <IconWand />
                   <span className="truncate group-data-[collapsible=icon]:hidden">
@@ -74,6 +77,16 @@ export default function AppSidebar() {
                 >
                   <IconNotebook />
                   <span>My Quizzes</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  tooltip="Classes"
+                  data-active={location.pathname.startsWith("/classes")}
+                  onClick={() => navigate("/classes")}
+                >
+                  <IconSchool />
+                  <span>Classes</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>

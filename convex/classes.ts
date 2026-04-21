@@ -155,7 +155,7 @@ export const getMyClasses = query({
         if (!classDoc || classDoc.isArchived) return null;
         return {
           ...classDoc,
-          myRole: m.role,
+          role: m.role,
         };
       })
     );
@@ -184,5 +184,69 @@ export const archiveClass = mutation({
     }
 
     await ctx.db.patch(args.classId, { isArchived: true });
+  },
+});
+
+// ─── GET CLASS DETAILS ──────────────────────────────────────────
+
+export const getClassDetails = query({
+  args: { classId: v.id("classes") },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Unauthenticated");
+
+    const user = await ctx.db
+      .query("users")
+      .withIndex("byExternalId", (q) => q.eq("externalId", identity.subject))
+      .unique();
+    if (!user) throw new Error("User not found");
+
+    // Verify membership
+    const membership = await ctx.db
+      .query("class_members")
+      .withIndex("byClassAndUser", (q) =>
+        q.eq("classId", args.classId).eq("userId", user._id)
+      )
+      .unique();
+    if (!membership) throw new Error("Not a member of this class");
+
+    // Fetch class data
+    const classData = await ctx.db.get(args.classId);
+    if (!classData || classData.isArchived) throw new Error("Class not found");
+
+    // Fetch roster (join with users)
+    const members = await ctx.db
+      .query("class_members")
+      .withIndex("byClassId", (q) => q.eq("classId", args.classId))
+      .collect();
+
+    const roster = await Promise.all(
+      members.map(async (m) => {
+        const memberUser = await ctx.db.get(m.userId);
+        return {
+          ...memberUser!, // user must exist
+          role: m.role,
+          joinedAt: m.joinedAt,
+        };
+      })
+    );
+
+    // Fetch quizzes for this class
+    const quizzes = await ctx.db
+      .query("quizzes")
+      .withIndex("byClassId", (q) => q.eq("classId", args.classId))
+      .collect();
+
+    // Sort quizzes by creation date (newest first)
+    const sortedQuizzes = quizzes
+      .filter(q => q.isPublished || membership.role === "teacher")
+      .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+
+    return {
+      ...classData,
+      role: membership.role,
+      roster,
+      quizzes: sortedQuizzes,
+    };
   },
 });

@@ -46,6 +46,7 @@ export const submitAttempt = mutation({
         questionId: ans.questionId,
         selectedOptionIndex: ans.selectedOptionIndex,
         isCorrect,
+        correctOptionIndex: question?.answer, // EXPOSE INCORRECT/CORRECT OPTIONS TO CLIENT
       };
     });
 
@@ -79,21 +80,47 @@ export const submitAttempt = mutation({
           score: correctCount,
           total: totalQuestions,
           percentage,
+          answers: enrichedAnswers,
         };
       }
     } else {
-      // Check attempt limits (single attempt mode)
-      if (!args.isPractice && quiz.maxAttempts) {
-        const gradedAttempts = existingAttempts.filter((a) => !a.isPractice);
-        if (gradedAttempts.length >= quiz.maxAttempts) {
-          throw new Error("Maximum attempts reached for this quiz");
+      // Single attempt mode
+      const isCreator = quiz.userId === user._id;
+
+      if (isCreator) {
+        // Creator can retake: upsert their latest attempt
+        const existingAttempt = existingAttempts.find((a) => !a.isPractice);
+        if (existingAttempt) {
+          await ctx.db.patch(existingAttempt._id, {
+            isPractice: args.isPractice,
+            score: correctCount,
+            percentage,
+            submittedAt: Date.now(),
+            answers: enrichedAnswers,
+          });
+
+          return {
+            attemptId: existingAttempt._id,
+            score: correctCount,
+            total: totalQuestions,
+            percentage,
+            answers: enrichedAnswers,
+          };
         }
-      }
-      // For single-attempt quizzes, block duplicate submissions
-      if (!args.isPractice) {
-        const alreadySubmitted = existingAttempts.some((a) => !a.isPractice);
-        if (alreadySubmitted) {
-          throw new Error("You have already submitted this quiz");
+      } else {
+        // Check attempt limits (single attempt mode)
+        if (!args.isPractice && quiz.maxAttempts) {
+          const gradedAttempts = existingAttempts.filter((a) => !a.isPractice);
+          if (gradedAttempts.length >= quiz.maxAttempts) {
+            throw new Error("Maximum attempts reached for this quiz");
+          }
+        }
+        // For single-attempt quizzes, block duplicate submissions
+        if (!args.isPractice) {
+          const alreadySubmitted = existingAttempts.some((a) => !a.isPractice);
+          if (alreadySubmitted) {
+            throw new Error("You have already submitted this quiz");
+          }
         }
       }
     }
@@ -114,6 +141,7 @@ export const submitAttempt = mutation({
       score: correctCount,
       total: totalQuestions,
       percentage,
+      answers: enrichedAnswers,
     };
   },
 });

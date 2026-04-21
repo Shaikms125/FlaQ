@@ -11,13 +11,14 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { ShareDialog } from "@/components/quiz/ShareDialog";
+import { ShareQuiz } from "@/components/quiz/ShareQuiz";
 import { DeleteQuizDialog } from "@/components/quiz/DeleteQuizDialog";
 import {
   IconPencil,
   IconChartBar,
   IconClock,
   IconUsers,
+  IconPlayerPlay,
 } from "@tabler/icons-react";
 
 interface QuizCardProps {
@@ -31,6 +32,8 @@ interface QuizCardProps {
     timeLimitSeconds?: number;
     allowUnlimitedAttempts: boolean;
     maxAttempts?: number;
+    availableFrom?: number;
+    availableTo?: number;
     createdAt: number;
   };
   questionCount: number;
@@ -98,10 +101,22 @@ export function QuizCard({ quiz, questionCount, attemptCount }: QuizCardProps) {
           <IconChartBar data-icon="inline-start" />
           Scores
         </Button>
-        <ShareDialog
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => window.open(`/quiz/${quiz.accessCode}`, '_blank')}
+        >
+          <IconPlayerPlay data-icon="inline-start" />
+          Take Test
+        </Button>
+        <ShareQuiz
           quizId={quiz._id}
+          quizTitle={quiz.title}
           accessCode={quiz.accessCode}
           isPublic={quiz.isPublic}
+          allowUnlimitedAttempts={quiz.allowUnlimitedAttempts}
+          availableFrom={quiz.availableFrom}
+          availableTo={quiz.availableTo}
         />
         <DeleteQuizDialog quizId={quiz._id} quizTitle={quiz.title} />
       </CardFooter>
