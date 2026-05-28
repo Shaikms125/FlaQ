@@ -5,11 +5,10 @@ import { paginationOptsValidator } from "convex/server";
 // ─── AI GENERATION ──────────────────────────────────────────────
 
 const MODEL_FALLBACKS = [
-  "meta-llama/llama-3.3-70b-instruct:free",
-  "google/gemma-3-27b-it:free",
-  "nousresearch/hermes-3-llama-3.1-405b:free",
-  "qwen/qwen3-coder:free",
-  "nvidia/nemotron-3-super-120b-a12b:free"
+  "moonshotai/kimi-k2.6:free",
+  "deepseek/deepseek-v4-flash:free",
+  "minimax/minimax-m2.5:free",
+  "google/gemma-4-31b-it:free",
 ];
 
 async function callOpenRouter(

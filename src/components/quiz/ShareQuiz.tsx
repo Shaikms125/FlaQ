@@ -38,7 +38,9 @@ interface ShareQuizProps {
   allowUnlimitedAttempts: boolean;
   availableFrom?: number;
   availableTo?: number;
-  trigger?: React.ReactElement;
+  trigger?: React.ReactElement | null;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
 export function ShareQuiz({
@@ -50,8 +52,15 @@ export function ShareQuiz({
   availableFrom: initialAvailableFrom,
   availableTo: initialAvailableTo,
   trigger,
+  open: controlledOpen,
+  onOpenChange,
 }: ShareQuizProps) {
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = controlledOpen !== undefined ? controlledOpen : internalOpen;
+  const setOpen = (v: boolean) => {
+    onOpenChange?.(v);
+    setInternalOpen(v);
+  };
   const [copied, setCopied] = useState(false);
   const [publicState, setPublicState] = useState(initialIsPublic);
   const [unlimitedState, setUnlimitedState] = useState(initialUnlimited);
@@ -114,16 +123,18 @@ export function ShareQuiz({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger
-        render={
-          trigger ?? (
-            <Button variant="outline" size="sm">
-              <IconShare data-icon="inline-start" />
-              Share
-            </Button>
-          )
-        }
-      />
+      {trigger !== null && (
+        <DialogTrigger
+          render={
+            trigger ?? (
+              <Button variant="outline" size="sm">
+                <IconShare data-icon="inline-start" />
+                Share
+              </Button>
+            )
+          }
+        />
+      )}
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Share Quiz</DialogTitle>

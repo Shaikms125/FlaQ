@@ -19,11 +19,19 @@ import { useState } from "react";
 interface DeleteQuizDialogProps {
   quizId: Id<"quizzes">;
   quizTitle: string;
-  trigger?: React.ReactElement;
+  trigger?: React.ReactElement | null;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
-export function DeleteQuizDialog({ quizId, quizTitle, trigger }: DeleteQuizDialogProps) {
-  const [open, setOpen] = useState(false);
+export function DeleteQuizDialog({ quizId, quizTitle, trigger, open: controlledOpen, onOpenChange }: DeleteQuizDialogProps) {
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = controlledOpen !== undefined ? controlledOpen : internalOpen;
+  const setOpen = (v: boolean) => {
+    onOpenChange?.(v);
+    setInternalOpen(v);
+  };
+
   const [deleting, setDeleting] = useState(false);
   const deleteQuiz = useMutation(api.quiz.deleteQuiz);
 
@@ -41,16 +49,18 @@ export function DeleteQuizDialog({ quizId, quizTitle, trigger }: DeleteQuizDialo
 
   return (
     <AlertDialog open={open} onOpenChange={setOpen}>
-      <AlertDialogTrigger
-        render={
-          trigger ?? (
-            <Button variant="destructive" size="sm">
-              <IconTrash data-icon="inline-start" />
-              Delete
-            </Button>
-          )
-        }
-      />
+      {trigger !== null && (
+        <AlertDialogTrigger
+          render={
+            trigger ?? (
+              <Button variant="destructive" size="sm">
+                <IconTrash data-icon="inline-start" />
+                Delete
+              </Button>
+            )
+          }
+        />
+      )}
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>Delete Quiz</AlertDialogTitle>
