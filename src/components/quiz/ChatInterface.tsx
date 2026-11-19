@@ -142,10 +142,13 @@ export function ChatInterface() {
       }
       setPhase("preview");
     } catch (e) {
-      addMessage(
-        "ai",
-        `Failed to generate quiz: ${(e as Error).message}. Please try again.`
-      );
+      const raw = (e as Error).message;
+      const friendly = raw.includes("rate limited")
+        ? "AI is busy right now (rate limited). Please wait ~30 seconds and try again."
+        : raw.length > 300
+          ? raw.slice(0, 300) + "…"
+          : raw;
+      addMessage("ai", `Failed to generate quiz: ${friendly}`);
       setPhase(isRegenerate ? "preview" : "idle");
     } finally {
       setRegenerating(false);

@@ -5,6 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Card,
+  CardAction,
   CardContent,
   CardHeader,
   CardTitle,
@@ -109,13 +110,17 @@ function BaseQuestionEditor({ questionData, index, onChange, onDelete }: BaseQue
 
 
   return (
-    <Card>
+    <Card size="sm">
       <CardHeader>
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-base">Question {index + 1}</CardTitle>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <span className="flex size-6 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+            {index + 1}
+          </span>
+        </CardTitle>
+        <CardAction>
           <AlertDialog>
             <AlertDialogTrigger render={
-              <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-destructive">
+              <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-destructive" aria-label={`Delete question ${index + 1}`}>
                 <IconTrash />
               </Button>
             } />
@@ -123,7 +128,7 @@ function BaseQuestionEditor({ questionData, index, onChange, onDelete }: BaseQue
               <AlertDialogHeader>
                 <AlertDialogTitle>Delete Question</AlertDialogTitle>
                 <AlertDialogDescription>
-                  Are you sure you want to delete Question {index + 1}? This action cannot be undone.
+                  Are you sure you want to delete question {index + 1}? This action cannot be undone.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
@@ -132,11 +137,11 @@ function BaseQuestionEditor({ questionData, index, onChange, onDelete }: BaseQue
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
-        </div>
+        </CardAction>
       </CardHeader>
       <CardContent>
         <div className="flex flex-col gap-4">
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-1.5">
             <Label>Question</Label>
             <Textarea
               value={question}
@@ -146,35 +151,37 @@ function BaseQuestionEditor({ questionData, index, onChange, onDelete }: BaseQue
             />
           </div>
 
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-1.5">
             <Label>Options (click to mark correct)</Label>
-            {options.map((opt, oIndex) => (
-              <div key={oIndex} className="flex items-center gap-2">
-                <Button
-                  variant={oIndex === answer ? "default" : "outline"}
-                  size="icon"
-                  className="size-8 shrink-0"
-                  onClick={() => handleSetCorrect(oIndex)}
-                  title={oIndex === answer ? "Correct answer" : "Set as correct answer"}
-                >
-                  {oIndex === answer ? (
-                    <IconCheck />
-                  ) : (
-                    <span className="text-xs font-semibold">
-                      {String.fromCharCode(65 + oIndex)}
-                    </span>
-                  )}
-                </Button>
-                <Input
-                  value={opt.text}
-                  onChange={(e) => handleOptionChange(oIndex, e.target.value)}
-                  className="flex-1"
-                />
-              </div>
-            ))}
+            <div className="flex flex-col gap-2">
+              {options.map((opt, oIndex) => (
+                <div key={oIndex} className="flex items-center gap-2">
+                  <Button
+                    variant={oIndex === answer ? "default" : "outline"}
+                    size="icon"
+                    className="size-8 shrink-0"
+                    onClick={() => handleSetCorrect(oIndex)}
+                    title={oIndex === answer ? "Correct answer" : "Set as correct answer"}
+                  >
+                    {oIndex === answer ? (
+                      <IconCheck />
+                    ) : (
+                      <span className="text-xs font-semibold">
+                        {String.fromCharCode(65 + oIndex)}
+                      </span>
+                    )}
+                  </Button>
+                  <Input
+                    value={opt.text}
+                    onChange={(e) => handleOptionChange(oIndex, e.target.value)}
+                    className="flex-1"
+                  />
+                </div>
+              ))}
+            </div>
           </div>
 
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-1.5">
             <Label>Explanation</Label>
             <Textarea
               value={explanation}
@@ -245,7 +252,7 @@ export function ReusableQuestionsEditor({
   };
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-3">
       {questions.map((q, i) => (
         <BaseQuestionEditor
           key={q._id || i}
@@ -256,7 +263,7 @@ export function ReusableQuestionsEditor({
         />
       ))}
 
-      <Button variant="outline" size="lg" className="mt-4 w-full border-dashed" onClick={handleAdd}>
+      <Button variant="outline" size="lg" className="w-full border-dashed" onClick={handleAdd}>
         <IconPlus data-icon="inline-start" />
         Add Question
       </Button>

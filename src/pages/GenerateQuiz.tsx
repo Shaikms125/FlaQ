@@ -77,7 +77,14 @@ export default function GenerateQuiz() {
         navigate(`/my-quizzes/${savedQuiz.quizId}/edit`);
       }
     } catch (e) {
-      toast.error("Failed to prepare quiz: " + (e as Error).message);
+      const raw = (e as Error).message;
+      // Convex wraps backend errors; surface the friendly message.
+      const friendly = raw.includes("rate limited")
+        ? "AI is busy right now (rate limited). Please wait ~30 seconds and try again."
+        : raw.length > 300
+          ? raw.slice(0, 300) + "…"
+          : raw;
+      toast.error("Failed to prepare quiz: " + friendly);
     } finally {
       setLoading(false);
     }

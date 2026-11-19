@@ -162,7 +162,7 @@ export function QuizSettingsPanel({
               <p className="text-xs text-muted-foreground">
                 Set when the quiz becomes available and when it expires. Leave blank for always available.
               </p>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor="settings-available-from" className="text-xs text-muted-foreground">
                     Available From

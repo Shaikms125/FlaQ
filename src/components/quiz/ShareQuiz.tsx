@@ -197,7 +197,7 @@ export function ShareQuiz({
                   <IconCalendar className="size-4 text-muted-foreground" />
                   Availability Window
                 </Label>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div className="flex flex-col gap-1">
                     <Label className="text-[10px] text-muted-foreground uppercase">From</Label>
                     <Input
