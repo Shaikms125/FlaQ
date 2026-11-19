@@ -43,7 +43,7 @@ export default function ClassDetail() {
   const isTeacher = role === "teacher";
 
   return (
-    <div className="container mx-auto py-8 max-w-7xl px-4 md:px-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+    <div className="container mx-auto py-8 max-w-7xl px-4 md:px-6">
       <div className="mb-8 flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div>
           <div className="flex items-center gap-3 mb-2">
@@ -93,7 +93,7 @@ export default function ClassDetail() {
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="stream" className="animate-in fade-in zoom-in-95 duration-200">
+        <TabsContent value="stream">
           <div className="grid gap-4">
             {quizzes.length === 0 ? (
               <Card className="py-12 text-center bg-muted/20 border-dashed">
@@ -172,7 +172,7 @@ export default function ClassDetail() {
           </div>
         </TabsContent>
 
-        <TabsContent value="members" className="animate-in fade-in zoom-in-95 duration-200">
+        <TabsContent value="members">
           <Card>
             <CardHeader>
               <CardTitle>Class Members</CardTitle>
@@ -222,7 +222,7 @@ export default function ClassDetail() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="analytics" className="animate-in fade-in zoom-in-95 duration-200">
+        <TabsContent value="analytics">
           {isTeacher ? (
             <TeacherAnalytics classId={classId as Id<"classes">} />
           ) : (

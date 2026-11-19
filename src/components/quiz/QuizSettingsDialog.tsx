@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { QuizSettingsPanel } from "@/components/quiz/QuizSettingsPanel";
 import {
@@ -19,8 +20,10 @@ interface QuizSettingsDialogProps {
   maxAttempts?: number;
   availableFrom?: number;
   availableTo?: number;
-  /** Custom trigger. Defaults to a gear-icon button. */
-  trigger?: React.ReactElement;
+  /** Custom trigger. Defaults to a gear-icon button. Pass null to control via open/onOpenChange. */
+  trigger?: React.ReactElement | null;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
 export function QuizSettingsDialog({
@@ -32,19 +35,30 @@ export function QuizSettingsDialog({
   availableFrom,
   availableTo,
   trigger,
+  open: controlledOpen,
+  onOpenChange,
 }: QuizSettingsDialogProps) {
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = controlledOpen !== undefined ? controlledOpen : internalOpen;
+  const setOpen = (v: boolean) => {
+    onOpenChange?.(v);
+    setInternalOpen(v);
+  };
+
   return (
-    <Dialog>
-      <DialogTrigger
-        render={
-          trigger ?? (
-            <Button variant="outline" size="icon">
-              <IconSettings className="size-4" />
-            </Button>
-          )
-        }
-      />
-      <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
+    <Dialog open={open} onOpenChange={setOpen}>
+      {trigger !== null && (
+        <DialogTrigger
+          render={
+            trigger ?? (
+              <Button variant="outline" size="icon" aria-label="Quiz settings">
+                <IconSettings />
+              </Button>
+            )
+          }
+        />
+      )}
+      <DialogContent className="sm:max-w-lg max-h-[85dvh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Quiz Settings</DialogTitle>
           <DialogDescription>

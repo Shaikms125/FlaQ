@@ -1,4 +1,5 @@
 import ThemeSwitcher from "@/components/ThemeSwitcher"
+import { AppBreadcrumbs } from "@/components/AppBreadcrumbs"
 import ClerkUserButton from "@/components/ui/clerkUserButton"
 import { Separator } from "@/components/ui/separator"
 import { SidebarTrigger } from "@/components/ui/sidebar"
@@ -16,9 +17,7 @@ export function AppTopbar() {
       <div className="flex min-w-0 flex-1 items-center gap-2">
         <SidebarTrigger className="shrink-0" />
         <Separator orientation="vertical" className="h-6 shrink-0" />
-        <span className="truncate text-sm font-semibold tracking-tight text-foreground">
-          FlaQ
-        </span>
+        <AppBreadcrumbs />
       </div>
       <div className="flex shrink-0 items-center gap-2">
         <ThemeSwitcher />

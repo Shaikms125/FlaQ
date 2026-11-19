@@ -14,7 +14,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import {
-  //IconArrowLeft,
   IconSettings,
   IconTrash,
   IconRefresh,
@@ -22,7 +21,15 @@ import {
   IconDeviceFloppy,
   IconPlayerPlay,
   IconLoader2,
+  IconDotsVertical,
 } from "@tabler/icons-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useState, useEffect, useRef, useCallback } from "react";
 
 export default function QuizEditor() {
@@ -46,6 +53,7 @@ export default function QuizEditor() {
   const [hasMetaChanges, setHasMetaChanges] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -121,7 +129,15 @@ export default function QuizEditor() {
       }
       if (result.title !== title) { setTitle(result.title); await updateQuiz({ quizId: quizId as Id<"quizzes">, title: result.title }); }
       toast.success("Quiz regenerated!");
-    } catch (e) { toast.error("Failed: " + (e as Error).message); }
+    } catch (e) {
+      const raw = (e as Error).message;
+      const friendly = raw.includes("rate limited")
+        ? "AI is busy right now (rate limited). Please wait ~30 seconds and try again."
+        : raw.length > 300
+          ? raw.slice(0, 300) + "…"
+          : raw;
+      toast.error("Failed: " + friendly);
+    }
     finally { setRegenerating(false); }
   };
 
@@ -166,69 +182,96 @@ export default function QuizEditor() {
   const settingsProps = { quizId, isPublic: quizData.isPublic, timeLimitSeconds: quizData.timeLimitSeconds, allowUnlimitedAttempts: quizData.allowUnlimitedAttempts, maxAttempts: quizData.maxAttempts, availableFrom: quizData.availableFrom, availableTo: quizData.availableTo };
 
   return (
-    <div className="flex flex-1 flex-col gap-4 p-4 sm:gap-6 sm:p-6">
-      {/* Header row */}
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-3 min-w-0">
-          <h1 className="text-lg sm:text-xl font-bold tracking-tight truncate">Edit Quiz</h1>
-          {!quizData.isPublished && (
-            <Badge variant="outline" className="bg-yellow-500/10 text-yellow-600 border-yellow-500/20">Draft</Badge>
-          )}
-        </div>
+    <div className="flex flex-1 flex-col">
+      {/* Sticky action bar below the topbar — Save stays reachable while scrolling */}
+      <div className="sticky top-14 z-10 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+        <div className="mx-auto flex h-12 w-full max-w-3xl items-center justify-between gap-2 px-4 sm:px-6">
+          <div className="flex min-w-0 items-center gap-2">
+            {!quizData.isPublished && (
+              <Badge variant="outline" className="bg-yellow-500/10 text-yellow-600 border-yellow-500/20">Draft</Badge>
+            )}
+          </div>
 
-        {/* Desktop toolbar */}
-        <div className="hidden md:flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={handleRegenerate} disabled={regenerating}>
-            {regenerating ? <IconLoader2 className="size-4 mr-1.5 animate-spin" /> : <IconRefresh className="size-4 mr-1.5" />}
-            {regenerating ? "Regenerating..." : "Regenerate"}
-          </Button>
-          <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive hover:bg-destructive/10" onClick={handleDiscard}>
-            <IconTrash className="size-4 mr-1.5" />Discard
-          </Button>
-          <Separator orientation="vertical" className="h-6" />
-          <ShareQuiz {...shareProps} trigger={<Button variant="outline" size="sm"><IconShare className="size-4 mr-1.5" />Share</Button>} />
-          <Button variant="outline" size="sm" onClick={handleSave} disabled={saving}>
-            {saving ? <IconLoader2 className="size-4 mr-1.5 animate-spin" /> : <IconDeviceFloppy className="size-4 mr-1.5" />}Save
-          </Button>
-          <QuizSettingsDialog {...settingsProps} />
+          {/* Mobile actions: frequent actions inline, the rest in an overflow menu */}
+          <div className="flex items-center gap-1.5 lg:hidden">
+            <ShareQuiz
+              {...shareProps}
+              trigger={
+                <Button variant="outline" size="icon-sm" aria-label="Share quiz">
+                  <IconShare />
+                </Button>
+              }
+            />
+            <Button variant="outline" size="sm" onClick={handleSave} disabled={saving}>
+              {saving ? <IconLoader2 data-icon="inline-start" className="animate-spin" /> : <IconDeviceFloppy data-icon="inline-start" />}
+              Save
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <Button variant="outline" size="icon-sm" aria-label="More options">
+                    <IconDotsVertical />
+                  </Button>
+                }
+              />
+              <DropdownMenuContent align="end" className="w-44">
+                <DropdownMenuItem onClick={handleRegenerate} disabled={regenerating}>
+                  {regenerating ? <IconLoader2 className="animate-spin" /> : <IconRefresh />}
+                  {regenerating ? "Regenerating..." : "Regenerate"}
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setSettingsOpen(true)}>
+                  <IconSettings />
+                  Quiz Settings
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem variant="destructive" onClick={handleDiscard}>
+                  <IconTrash />
+                  Discard
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+
+          {/* Desktop actions */}
+          <div className="hidden lg:flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={handleRegenerate} disabled={regenerating}>
+              {regenerating ? <IconLoader2 data-icon="inline-start" className="animate-spin" /> : <IconRefresh data-icon="inline-start" />}
+              {regenerating ? "Regenerating..." : "Regenerate"}
+            </Button>
+            <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive hover:bg-destructive/10" onClick={handleDiscard}>
+              <IconTrash data-icon="inline-start" />Discard
+            </Button>
+            <Separator orientation="vertical" className="h-6" />
+            <ShareQuiz {...shareProps} trigger={<Button variant="outline" size="sm"><IconShare data-icon="inline-start" />Share</Button>} />
+            <Button variant="outline" size="sm" onClick={handleSave} disabled={saving}>
+              {saving ? <IconLoader2 data-icon="inline-start" className="animate-spin" /> : <IconDeviceFloppy data-icon="inline-start" />}Save
+            </Button>
+            <Button variant="outline" size="icon" aria-label="Quiz settings" onClick={() => setSettingsOpen(true)}>
+              <IconSettings />
+            </Button>
+          </div>
         </div>
       </div>
-
-      {/* Mobile toolbar */}
-      <div className="flex flex-col gap-2 md:hidden">
-        <Button variant="outline" className="w-full" onClick={handleRegenerate} disabled={regenerating}>
-          {regenerating ? <IconLoader2 className="size-4 mr-1.5 animate-spin" /> : <IconRefresh className="size-4 mr-1.5" />}
-          {regenerating ? "Regenerating..." : "Regenerate Quiz"}
-        </Button>
-        <div className="grid grid-cols-3 gap-2">
-          <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive hover:bg-destructive/10" onClick={handleDiscard}>
-            <IconTrash className="size-4 mr-1" />Discard
-          </Button>
-          <ShareQuiz {...shareProps} trigger={<Button variant="outline" size="sm" className="w-full"><IconShare className="size-4 mr-1" />Share</Button>} />
-          <Button variant="outline" size="sm" onClick={handleSave} disabled={saving}>
-            {saving ? <IconLoader2 className="size-4 mr-1 animate-spin" /> : <IconDeviceFloppy className="size-4 mr-1" />}Save
-          </Button>
-        </div>
-        <QuizSettingsDialog {...settingsProps} trigger={<Button variant="outline" size="sm" className="w-full"><IconSettings className="size-4 mr-1.5" />Quiz Settings</Button>} />
-      </div>
-
-      <Separator />
 
       {/* Content */}
-      <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
-        <div className="flex flex-col gap-4">
-          <div className="flex flex-col gap-2">
+      <div className="mx-auto flex w-full max-w-3xl flex-col gap-8 px-4 pb-12 pt-5 sm:px-6">
+        {/* Quiz details */}
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-1.5">
             <Label htmlFor="quiz-title">Title</Label>
             <Input id="quiz-title" value={title} onChange={(e) => { setTitle(e.target.value); scheduleMetaSave(); }} placeholder="Quiz title..." />
           </div>
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-1.5">
             <Label htmlFor="quiz-description">Description (optional)</Label>
             <Textarea id="quiz-description" value={description} onChange={(e) => { setDescription(e.target.value); scheduleMetaSave(); }} placeholder="Describe your quiz..." rows={2} className="resize-none" />
           </div>
         </div>
 
-        <div className="flex flex-col gap-4">
-          <h2 className="text-lg font-semibold">Questions ({quizData.questions.length})</h2>
+        {/* Questions */}
+        <div className="flex flex-col gap-3">
+          <h2 className="text-lg font-semibold">
+            Questions <span className="font-normal text-muted-foreground">({quizData.questions.length})</span>
+          </h2>
           <ReusableQuestionsEditor
             questions={quizData.questions as ReusableQuestionData[]}
             onChange={() => {}}
@@ -238,12 +281,20 @@ export default function QuizEditor() {
           />
         </div>
 
-        <div className="flex justify-center py-6">
+        <div className="flex justify-center pt-2">
           <Button size="lg" className="w-full max-w-sm" onClick={() => window.open(`/quiz/${quizData.accessCode}`, "_blank")}>
-            <IconPlayerPlay className="size-5 mr-2 fill-current" />Start Test
+            <IconPlayerPlay data-icon="inline-start" className="fill-current" />Start Test
           </Button>
         </div>
       </div>
+
+      {/* Single settings dialog shared by the desktop gear button and the mobile menu item */}
+      <QuizSettingsDialog
+        {...settingsProps}
+        trigger={null}
+        open={settingsOpen}
+        onOpenChange={setSettingsOpen}
+      />
     </div>
   );
 }

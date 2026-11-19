@@ -4,12 +4,32 @@ import { paginationOptsValidator } from "convex/server";
 
 // ─── AI GENERATION ──────────────────────────────────────────────
 
+// Ordered by reliability / quota. Keep several `:free` models so a
+// single upstream 429 doesn't take down generation.
 const MODEL_FALLBACKS = [
-  "moonshotai/kimi-k2.6:free",
+  "apodex/apodex-1.1-mini:free",
   "deepseek/deepseek-v4-flash:free",
   "minimax/minimax-m2.5:free",
   "google/gemma-4-31b-it:free",
+  "meta-llama/llama-3.3-70b-instruct:free",
+  "qwen/qwen3-235b-a22b:free",
+  "mistralai/mistral-small-3.1-24b-instruct:free",
 ];
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRateLimitError(message: string) {
+  const m = message.toLowerCase();
+  return (
+    m.includes("429") ||
+    m.includes("rate-limited") ||
+    m.includes("rate limited") ||
+    m.includes("too many requests") ||
+    m.includes("temporarily rate-limited")
+  );
+}
 
 async function callOpenRouter(
   apiKey: string,
@@ -22,6 +42,10 @@ async function callOpenRouter(
     headers: {
       "Authorization": `Bearer ${apiKey}`,
       "Content-Type": "application/json",
+      // OpenRouter recommends these; missing referer/title can mean
+      // stricter rate limits on free-tier keys.
+      "HTTP-Referer": "https://quiz-ai.app",
+      "X-Title": "Quiz AI",
     },
     body: JSON.stringify({
       model,
@@ -29,18 +53,86 @@ async function callOpenRouter(
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt },
       ],
+      temperature: 0.7,
+      max_tokens: 4000,
+      response_format: { type: "json_object" },
     }),
   });
 
   if (!response.ok) {
     const body = await response.text().catch(() => "");
-    throw new Error(`${response.status} ${response.statusText}${body ? ` — ${body.slice(0, 200)}` : ""}`);
+    throw new Error(`${response.status} ${response.statusText}${body ? ` — ${body.slice(0, 500)}` : ""}`);
   }
 
   return response.json();
 }
 
+// Retry a single model a few times on 429s with exponential backoff
+// before moving on to the next fallback model.
+async function callModelWithRetries(
+  apiKey: string,
+  model: string,
+  systemPrompt: string,
+  userPrompt: string,
+  maxRetries = 2,
+) {
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await callOpenRouter(apiKey, model, systemPrompt, userPrompt);
+    } catch (e) {
+      lastError = e;
+      const message = (e as Error)?.message ?? "";
+      // Only retry rate limits — other errors (401, 400, bad JSON)
+      // won't fix themselves by retrying the same model.
+      if (isRateLimitError(message) && attempt < maxRetries) {
+        const backoffMs = 2000 * (attempt + 1);
+        console.warn(
+          `Model ${model} rate-limited (attempt ${attempt + 1}/${maxRetries + 1}), retrying in ${backoffMs}ms...`
+        );
+        await sleep(backoffMs);
+        continue;
+      }
+      throw e;
+    }
+  }
+  throw lastError as Error;
+}
+
 function parseQuizResponse(data: any, optionCount: number) {
+  const content: string | undefined = data?.choices?.[0]?.message?.content?.trim();
+  if (!content) {
+    throw new Error("Model returned an empty response. Trying next model...");
+  }
+
+  let cleaned = content;
+  if (cleaned.startsWith("```json")) {
+    cleaned = cleaned.replace(/^```json\s*/, "").replace(/\s*```$/, "");
+  } else if (cleaned.startsWith("```")) {
+    cleaned = cleaned.replace(/^```\s*/, "").replace(/\s*```$/, "");
+  }
+
+  // Models sometimes wrap JSON in prose — extract the JSON object/array.
+  const jsonStart = Math.min(
+    ...["{", "["].map((c) => {
+      const i = cleaned.indexOf(c);
+      return i === -1 ? Infinity : i;
+    })
+  );
+  const jsonEndObj = cleaned.lastIndexOf("}");
+  const jsonEndArr = cleaned.lastIndexOf("]");
+  const jsonEnd = Math.max(jsonEndObj, jsonEndArr);
+  if (jsonStart !== Infinity && jsonEnd > jsonStart) {
+    cleaned = cleaned.slice(jsonStart, jsonEnd + 1);
+  }
+
+  let parsed: any;
+  try {
+    parsed = JSON.parse(cleaned);
+  } catch {
+    throw new Error("Model returned invalid JSON. Trying next model...");
+  }
+
   let result: {
     title: string;
     questions: {
@@ -50,15 +142,6 @@ function parseQuizResponse(data: any, optionCount: number) {
       explanation: string;
     }[];
   };
-
-  let content: string = data.choices[0].message.content.trim();
-  if (content.startsWith("```json")) {
-    content = content.replace(/^```json\s*/, "").replace(/\s*```$/, "");
-  } else if (content.startsWith("```")) {
-    content = content.replace(/^```\s*/, "").replace(/\s*```$/, "");
-  }
-
-  const parsed = JSON.parse(content);
 
   if (parsed.title && Array.isArray(parsed.questions)) {
     result = parsed;
@@ -114,17 +197,29 @@ Each question object must have exactly these keys:
 - "explanation": string (a brief explanation of why the answer is correct)`;
 
     let lastError: Error | null = null;
+    let rateLimitedCount = 0;
 
     for (const model of MODEL_FALLBACKS) {
       try {
-        const data = await callOpenRouter(apiKey, model, systemPrompt, args.prompt);
+        const data = await callModelWithRetries(apiKey, model, systemPrompt, args.prompt);
         return parseQuizResponse(data, optionCount);
       } catch (e) {
         lastError = e as Error;
+        if (isRateLimitError(lastError.message)) rateLimitedCount++;
         console.warn(`Model ${model} failed, trying next fallback...`, lastError.message);
+        // Small stagger between different models so we don't slam
+        // OpenRouter with back-to-back requests on a throttled key.
+        await sleep(1000);
       }
     }
 
+    // All fallbacks exhausted — give the user an actionable message
+    // instead of a raw "All AI models failed ... 429 ..." dump.
+    if (rateLimitedCount > 0) {
+      throw new Error(
+        "AI is busy right now (rate limited). Please wait ~30 seconds and try again."
+      );
+    }
     throw new Error("All AI models failed to generate quiz. Last error: " + (lastError?.message ?? "unknown"));
   }
 });
